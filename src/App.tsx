@@ -23,6 +23,15 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${unit}`;
 }
 
+const EXTERIOR_HINT = /(^|[\/_\-.])(exteriors?|fuselage|fuse|body|hull|wings?|tail|stabilizers?|rudders?|elevators?|ailerons?|flaps?|slats?|spoilers?|doors?|canopy|windows?|external[-_ ]?glass|engines?|nacelles?|cowlings?|gears?|wheels?|tires?|rotors?|props?|hook|ramp|light[s]?[-_ ]?out|antennas?|radome|probe|basket|flircam|flir|sensors?|esss|ball|rope[-_ ]?mount)([\/_\-.]|\d|$)/i;
+const INTERIOR_HINT = /(^|[\/_\-.])(cockpit|interior|inside|cabin|panel|dash|seat|pilot|crew|pax|passenger|avionics|cdu|compass|medevac|vip|potus|toilet|galley)([\/_\-.]|\d|$)|\/(weapons|scenery|slungload|particles)\//i;
+
+function suggestedExteriorPaths(inspection: ArchiveInspection): string[] {
+  const positive = inspection.models.filter((model) => EXTERIOR_HINT.test(model.path) && !INTERIOR_HINT.test(model.path));
+  const candidates = positive.length > 0 ? positive : inspection.models.filter((model) => !INTERIOR_HINT.test(model.path));
+  return candidates.filter((model) => model.triangles.length > 0).map((model) => model.path);
+}
+
 function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
   return (
     <li className={`diagnostic diagnostic--${diagnostic.severity}`}>
@@ -50,6 +59,7 @@ function App() {
     outputName: "aircraft",
     coordinateMode: "openflight-z-up",
     includeUnreferencedTextures: false,
+    selectedModelPaths: [],
   });
 
   const processFile = async (file: File) => {
@@ -67,6 +77,7 @@ function App() {
       setOptions((current) => ({
         ...current,
         outputName: safeFileStem(nextInspection.rootName || removeExtension(file.name)),
+        selectedModelPaths: suggestedExteriorPaths(nextInspection),
       }));
       setStage("ready");
     } catch (error) {
@@ -113,6 +124,17 @@ function App() {
 
   const blockingErrors = inspection?.diagnostics.some((diagnostic) => diagnostic.severity === "error") ?? false;
   const warnings = inspection?.diagnostics.filter((diagnostic) => diagnostic.severity !== "info") ?? [];
+  const selectedSet = new Set(options.selectedModelPaths);
+  const selectedModels = inspection?.models.filter((model) => selectedSet.has(model.path)) ?? [];
+  const selectedTriangles = selectedModels.reduce((sum, model) => sum + model.triangles.length, 0);
+  const estimatedFltBytes = selectedModels.reduce((sum, model) => sum + model.vertices.length * 64 + model.triangles.length * 104 + 36, 380);
+
+  const toggleModel = (path: string) => setOptions((current) => ({
+    ...current,
+    selectedModelPaths: current.selectedModelPaths.includes(path)
+      ? current.selectedModelPaths.filter((item) => item !== path)
+      : [...current.selectedModelPaths, path],
+  }));
 
   return (
     <div className="app-shell">
@@ -195,15 +217,20 @@ function App() {
 
                 <section className="panel">
                   <div className="panel__heading">
-                    <div><p className="section-kicker">Geometry inventory</p><h3>OBJ8 meshes</h3></div>
-                    <span className="chip">{formatNumber(inspection.totals.vertices)} vertices</span>
+                    <div><p className="section-kicker">Exterior selection</p><h3>{selectedModels.length} of {inspection.models.length} OBJ8 meshes</h3></div>
+                    <div className="selection-actions">
+                      <button type="button" onClick={() => setOptions({ ...options, selectedModelPaths: suggestedExteriorPaths(inspection) })}>Exterior only</button>
+                      <button type="button" onClick={() => setOptions({ ...options, selectedModelPaths: inspection.models.filter((model) => model.triangles.length > 0).map((model) => model.path) })}>All</button>
+                      <button type="button" onClick={() => setOptions({ ...options, selectedModelPaths: [] })}>None</button>
+                    </div>
                   </div>
                   <div className="table-wrap">
                     <table>
-                      <thead><tr><th>Object</th><th>Vertices</th><th>Triangles</th><th>Diffuse texture</th></tr></thead>
+                      <thead><tr><th>Use</th><th>Object</th><th>Vertices</th><th>Triangles</th><th>Diffuse texture</th></tr></thead>
                       <tbody>
                         {inspection.models.map((model) => (
-                          <tr key={model.path}>
+                          <tr key={model.path} className={selectedSet.has(model.path) ? "is-selected" : ""}>
+                            <td><input className="model-check" type="checkbox" checked={selectedSet.has(model.path)} onChange={() => toggleModel(model.path)} aria-label={`Include ${model.name}`} /></td>
                             <td title={model.path}>{model.name}</td>
                             <td>{formatNumber(model.vertices.length)}</td>
                             <td>{formatNumber(model.triangles.length)}</td>
@@ -258,8 +285,14 @@ function App() {
                   <p><strong>Textures stay external.</strong> OpenFlight references image files by path, so the ZIP package is the texture-complete deliverable.</p>
                 </div>
 
+                <div className="export-summary">
+                  <span>{selectedModels.length} exterior objects</span>
+                  <span>{formatNumber(selectedTriangles)} triangles</span>
+                  <span>≈ {formatBytes(estimatedFltBytes)} FLT</span>
+                </div>
+
                 {stage !== "complete" && (
-                  <button className="button button--primary button--full" disabled={blockingErrors || stage === "converting" || !options.outputName.trim()} onClick={() => void runConversion()}>
+                  <button className="button button--primary button--full" disabled={blockingErrors || stage === "converting" || !options.outputName.trim() || selectedModels.length === 0} onClick={() => void runConversion()}>
                     {stage === "converting" ? "Building OpenFlight package…" : blockingErrors ? "Resolve blocking errors" : "Convert aircraft"}
                   </button>
                 )}
@@ -296,4 +329,3 @@ function App() {
 }
 
 export default App;
-

@@ -39,6 +39,7 @@ describe("aircraft archive pipeline", () => {
       outputName: "demo-aircraft",
       coordinateMode: "openflight-z-up",
       includeUnreferencedTextures: false,
+      selectedModelPaths: inspection.models.map((model) => model.path),
     });
     expect(result.fltFileName).toBe("demo-aircraft.flt");
     expect(result.textureCount).toBe(2);
@@ -52,4 +53,3 @@ describe("aircraft archive pipeline", () => {
     expect(output.file("conversion-report.json")).not.toBeNull();
   });
 });
-

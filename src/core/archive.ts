@@ -190,13 +190,16 @@ export async function convertArchive(
     throw new Error("The archive contains blocking errors. Resolve them before converting.");
   }
   const zip = await loadArchive(source);
+  const selectedPathSet = new Set(options.selectedModelPaths.map((path) => path.toLowerCase()));
+  const selectedModels = inspection.models.filter((model) => selectedPathSet.has(model.path.toLowerCase()));
+  if (selectedModels.length === 0) throw new Error("Select at least one OBJ8 mesh before converting.");
   const normalizedEntries = new Map<string, JSZipObject>();
   for (const [path, entry] of Object.entries(zip.files)) {
     if (!entry.dir) normalizedEntries.set(normalizeArchivePath(path).toLowerCase(), entry);
   }
 
-  const diffuseSources = [...new Set(inspection.models.map((model) => model.texturePath).filter((value): value is string => Boolean(value)))];
-  const auxiliarySources = inspection.models.flatMap((model) => [model.litTexturePath, model.normalTexturePath]).filter((value): value is string => Boolean(value));
+  const diffuseSources = [...new Set(selectedModels.map((model) => model.texturePath).filter((value): value is string => Boolean(value)))];
+  const auxiliarySources = selectedModels.flatMap((model) => [model.litTexturePath, model.normalTexturePath]).filter((value): value is string => Boolean(value));
   const selectedTextures = options.includeUnreferencedTextures
     ? inspection.textureFiles
     : [...new Set([...diffuseSources, ...auxiliarySources])];
@@ -217,7 +220,7 @@ export async function convertArchive(
   const fltFileName = `${outputStem}.flt`;
   const packageFileName = `${outputStem}-openflight.zip`;
   const flt = buildOpenFlight({
-    models: inspection.models,
+    models: selectedModels,
     textures: diffuseBindings,
     coordinateMode: options.coordinateMode,
     databaseId: outputStem,
@@ -243,7 +246,7 @@ export async function convertArchive(
         openFlightVersion: "16.0",
         sourceArchive: inspection.archiveName,
         coordinateMode: options.coordinateMode,
-        objects: inspection.models.map((model) => ({
+        objects: selectedModels.map((model) => ({
           source: model.path,
           vertices: model.vertices.length,
           triangles: model.triangles.length,
@@ -274,8 +277,7 @@ export async function convertArchive(
     packageFileName,
     diagnostics: [...inspection.diagnostics, ...validationDiagnostics],
     textureCount: selectedTextures.length,
-    objectCount: inspection.models.filter((model) => model.triangles.length > 0).length,
-    triangleCount: inspection.totals.triangles,
+    objectCount: selectedModels.filter((model) => model.triangles.length > 0).length,
+    triangleCount: selectedModels.reduce((sum, model) => sum + model.triangles.length, 0),
   };
 }
-

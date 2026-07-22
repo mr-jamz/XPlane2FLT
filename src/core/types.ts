@@ -56,6 +56,7 @@ export interface ConversionOptions {
   outputName: string;
   coordinateMode: "openflight-z-up" | "keep-xplane";
   includeUnreferencedTextures: boolean;
+  selectedModelPaths: string[];
 }
 
 export interface ConversionResult {
@@ -68,4 +69,3 @@ export interface ConversionResult {
   objectCount: number;
   triangleCount: number;
 }
-

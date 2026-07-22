@@ -17,25 +17,27 @@ interface BuildInput {
   databaseId?: string;
 }
 
-interface IndexedTriangle extends Obj8Triangle {
-  objectIndex: number;
-  textureIndex: number;
-}
-
 interface IndexedVertex {
   vertex: Obj8Vertex;
   paletteOffset: number;
 }
 
 class BigEndianWriter {
-  private bytes: number[] = [];
+  private readonly bytes: Uint8Array;
+  private readonly view: DataView;
+  private offset = 0;
+
+  constructor(size: number) {
+    this.bytes = new Uint8Array(size);
+    this.view = new DataView(this.bytes.buffer);
+  }
 
   get length(): number {
-    return this.bytes.length;
+    return this.offset;
   }
 
   uint8(value: number): void {
-    this.bytes.push(value & 0xff);
+    this.view.setUint8(this.offset, value & 0xff); this.offset += 1;
   }
 
   int8(value: number): void {
@@ -43,7 +45,7 @@ class BigEndianWriter {
   }
 
   uint16(value: number): void {
-    this.bytes.push((value >>> 8) & 0xff, value & 0xff);
+    this.view.setUint16(this.offset, value & 0xffff, false); this.offset += 2;
   }
 
   int16(value: number): void {
@@ -51,12 +53,7 @@ class BigEndianWriter {
   }
 
   uint32(value: number): void {
-    this.bytes.push(
-      (value >>> 24) & 0xff,
-      (value >>> 16) & 0xff,
-      (value >>> 8) & 0xff,
-      value & 0xff,
-    );
+    this.view.setUint32(this.offset, value >>> 0, false); this.offset += 4;
   }
 
   int32(value: number): void {
@@ -64,15 +61,11 @@ class BigEndianWriter {
   }
 
   float32(value: number): void {
-    const buffer = new ArrayBuffer(4);
-    new DataView(buffer).setFloat32(0, value, false);
-    this.raw(new Uint8Array(buffer));
+    this.view.setFloat32(this.offset, value, false); this.offset += 4;
   }
 
   float64(value: number): void {
-    const buffer = new ArrayBuffer(8);
-    new DataView(buffer).setFloat64(0, value, false);
-    this.raw(new Uint8Array(buffer));
+    this.view.setFloat64(this.offset, value, false); this.offset += 8;
   }
 
   ascii(value: string, length: number): void {
@@ -82,15 +75,16 @@ class BigEndianWriter {
   }
 
   zeros(length: number): void {
-    for (let index = 0; index < length; index += 1) this.bytes.push(0);
+    this.offset += length;
   }
 
   raw(value: Uint8Array): void {
-    for (const byte of value) this.bytes.push(byte);
+    this.bytes.set(value, this.offset); this.offset += value.byteLength;
   }
 
   toUint8Array(): Uint8Array {
-    return Uint8Array.from(this.bytes);
+    if (this.offset !== this.bytes.byteLength) throw new Error(`Internal error: wrote ${this.offset} of ${this.bytes.byteLength} allocated bytes.`);
+    return this.bytes;
   }
 }
 
@@ -168,10 +162,6 @@ function transformVertex(vertex: Obj8Vertex, coordinateMode: BuildInput["coordin
     normal: [vertex.normal[0], -vertex.normal[2], vertex.normal[1]],
     uv: vertex.uv,
   };
-}
-
-function vertexKey(vertex: Obj8Vertex): string {
-  return [...vertex.position, ...vertex.normal, ...vertex.uv].map((value) => Number(value).toPrecision(12)).join("|");
 }
 
 function writeVertexPalette(writer: BigEndianWriter, vertices: IndexedVertex[]): void {
@@ -280,11 +270,17 @@ function pop(writer: BigEndianWriter): void {
 }
 
 export function buildOpenFlight(input: BuildInput): Uint8Array {
-  const writer = new BigEndianWriter();
+  const vertexCount = input.models.reduce((sum, model) => sum + model.vertices.length, 0);
+  const triangleCount = input.models.reduce((sum, model) => sum + model.triangles.length, 0);
+  const populatedObjectCount = input.models.filter((model) => model.triangles.length > 0).length;
+  const outputSize = HEADER_LENGTH + input.textures.length * 216 + 8 + vertexCount * VERTEX_RECORD_LENGTH
+    + 44 + 4 + populatedObjectCount * (28 + 4 + 4) + triangleCount * (FACE_LENGTH + 4 + 16 + 4) + 4;
+  if (!Number.isSafeInteger(outputSize) || outputSize > 1_500_000_000) {
+    throw new Error("The selected objects exceed the safe browser export size. Select fewer OBJ8 meshes and try again.");
+  }
+  const writer = new BigEndianWriter(outputSize);
   const textureBySource = new Map(input.textures.map((texture) => [texture.sourcePath.toLowerCase(), texture.index]));
   const uniqueVertices: IndexedVertex[] = [];
-  const paletteOffsetByKey = new Map<string, number>();
-  const triangles: IndexedTriangle[] = [];
   const modelVertexOffsets: number[][] = [];
 
   for (let objectIndex = 0; objectIndex < input.models.length; objectIndex += 1) {
@@ -292,21 +288,14 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
     const offsets: number[] = [];
     for (const sourceVertex of model.vertices) {
       const vertex = transformVertex(sourceVertex, input.coordinateMode);
-      const key = vertexKey(vertex);
-      let paletteOffset = paletteOffsetByKey.get(key);
-      if (paletteOffset === undefined) {
-        paletteOffset = 8 + uniqueVertices.length * VERTEX_RECORD_LENGTH;
-        paletteOffsetByKey.set(key, paletteOffset);
-        uniqueVertices.push({ vertex, paletteOffset });
-      }
+      const paletteOffset = 8 + uniqueVertices.length * VERTEX_RECORD_LENGTH;
+      uniqueVertices.push({ vertex, paletteOffset });
       offsets.push(paletteOffset);
     }
     modelVertexOffsets.push(offsets);
-    const textureIndex = model.texturePath ? textureBySource.get(model.texturePath.toLowerCase()) ?? -1 : -1;
-    for (const triangle of model.triangles) triangles.push({ ...triangle, objectIndex, textureIndex });
   }
 
-  writeHeader(writer, input.databaseId ?? "db", triangles.length, input.models.length);
+  writeHeader(writer, input.databaseId ?? "db", triangleCount, input.models.length);
   for (const texture of input.textures) writeTexturePalette(writer, texture);
   writeVertexPalette(writer, uniqueVertices);
   writeGroup(writer, "AIRCRFT");
@@ -314,12 +303,13 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
 
   let faceNumber = 1;
   for (let objectIndex = 0; objectIndex < input.models.length; objectIndex += 1) {
-    const objectTriangles = triangles.filter((triangle) => triangle.objectIndex === objectIndex);
+    const objectTriangles = input.models[objectIndex].triangles;
     if (objectTriangles.length === 0) continue;
+    const textureIndex = input.models[objectIndex].texturePath ? textureBySource.get(input.models[objectIndex].texturePath!.toLowerCase()) ?? -1 : -1;
     writeObject(writer, `OBJ${String(objectIndex + 1).padStart(4, "0")}`.slice(0, 7));
     push(writer);
     for (const triangle of objectTriangles) {
-      writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), triangle.textureIndex, triangle.doubleSided);
+      writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, triangle.doubleSided);
       push(writer);
       const offsets = modelVertexOffsets[objectIndex];
       writeVertexList(writer, [
