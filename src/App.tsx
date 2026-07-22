@@ -1,0 +1,299 @@
+import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { convertArchive, inspectArchive } from "./core/archive";
+import { downloadBytes } from "./core/download";
+import { removeExtension, safeFileStem } from "./core/path";
+import type { ArchiveInspection, ConversionOptions, ConversionResult, Diagnostic } from "./core/types";
+
+type AppStage = "select" | "inspecting" | "ready" | "converting" | "complete";
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat().format(value);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes;
+  let unit = "B";
+  for (const nextUnit of units) {
+    value /= 1024;
+    unit = nextUnit;
+    if (value < 1024) break;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${unit}`;
+}
+
+function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
+  return (
+    <li className={`diagnostic diagnostic--${diagnostic.severity}`}>
+      <span className="diagnostic__marker" aria-hidden="true">
+        {diagnostic.severity === "error" ? "×" : diagnostic.severity === "warning" ? "!" : "i"}
+      </span>
+      <span>
+        <strong>{diagnostic.code.replaceAll("_", " ")}</strong>
+        {diagnostic.file && <small>{diagnostic.file}</small>}
+        <span>{diagnostic.message}</span>
+      </span>
+    </li>
+  );
+}
+
+function App() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [stage, setStage] = useState<AppStage>("select");
+  const [dragging, setDragging] = useState(false);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [inspection, setInspection] = useState<ArchiveInspection | null>(null);
+  const [result, setResult] = useState<ConversionResult | null>(null);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const [options, setOptions] = useState<ConversionOptions>({
+    outputName: "aircraft",
+    coordinateMode: "openflight-z-up",
+    includeUnreferencedTextures: false,
+  });
+
+  const processFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setFatalError("Select a .zip archive containing an X-Plane 12 aircraft folder.");
+      return;
+    }
+    setFatalError(null);
+    setResult(null);
+    setSourceFile(file);
+    setStage("inspecting");
+    try {
+      const nextInspection = await inspectArchive(file, file.name);
+      setInspection(nextInspection);
+      setOptions((current) => ({
+        ...current,
+        outputName: safeFileStem(nextInspection.rootName || removeExtension(file.name)),
+      }));
+      setStage("ready");
+    } catch (error) {
+      setInspection(null);
+      setStage("select");
+      setFatalError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) void processFile(file);
+    event.target.value = "";
+  };
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer.files[0];
+    if (file) void processFile(file);
+  };
+
+  const runConversion = async () => {
+    if (!sourceFile || !inspection) return;
+    setFatalError(null);
+    setStage("converting");
+    try {
+      const nextResult = await convertArchive(sourceFile, inspection, options);
+      setResult(nextResult);
+      setStage("complete");
+    } catch (error) {
+      setFatalError(error instanceof Error ? error.message : String(error));
+      setStage("ready");
+    }
+  };
+
+  const reset = () => {
+    setStage("select");
+    setSourceFile(null);
+    setInspection(null);
+    setResult(null);
+    setFatalError(null);
+  };
+
+  const blockingErrors = inspection?.diagnostics.some((diagnostic) => diagnostic.severity === "error") ?? false;
+  const warnings = inspection?.diagnostics.filter((diagnostic) => diagnostic.severity !== "info") ?? [];
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="#top" aria-label="XPlane2FLT home">
+          <span className="brand__mark" aria-hidden="true">X2F</span>
+          <span>
+            <strong>XPlane2FLT</strong>
+            <small>Local OpenFlight converter</small>
+          </span>
+        </a>
+        <div className="topbar__status">
+          <span className="status-dot" aria-hidden="true" />
+          Private by design
+        </div>
+      </header>
+
+      <main id="top">
+        <section className="hero">
+          <div className="hero__copy">
+            <p className="eyebrow">X-Plane 12 → OpenFlight 16.0</p>
+            <h1>Convert aircraft geometry without uploading a thing.</h1>
+            <p className="hero__lede">
+              Inspect an aircraft ZIP, translate OBJ8 meshes to a real binary <code>.flt</code>, and package the original textures beside it—all inside your browser.
+            </p>
+          </div>
+          <ol className="process" aria-label="Conversion process">
+            {[
+              ["01", "Inspect"],
+              ["02", "Convert"],
+              ["03", "Validate"],
+              ["04", "Export"],
+            ].map(([number, label], index) => (
+              <li key={number} className={stage === "select" ? (index === 0 ? "is-current" : "") : index <= (stage === "complete" ? 3 : stage === "converting" ? 1 : 0) ? "is-current" : ""}>
+                <span>{number}</span>{label}
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="workspace" aria-live="polite">
+          <div className="workspace__header">
+            <div>
+              <p className="section-kicker">Conversion workspace</p>
+              <h2>{sourceFile ? sourceFile.name : "Choose an aircraft archive"}</h2>
+            </div>
+            {sourceFile && <button className="button button--quiet" onClick={reset}>Start over</button>}
+          </div>
+
+          {(stage === "select" || stage === "inspecting") && (
+            <div
+              className={`dropzone ${dragging ? "is-dragging" : ""} ${stage === "inspecting" ? "is-busy" : ""}`}
+              onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+            >
+              <input ref={inputRef} type="file" accept=".zip,application/zip" onChange={onFileChange} hidden />
+              <span className="dropzone__icon" aria-hidden="true">{stage === "inspecting" ? "···" : "ZIP"}</span>
+              <h3>{stage === "inspecting" ? "Inspecting aircraft assets…" : "Drop an X-Plane aircraft ZIP here"}</h3>
+              <p>{stage === "inspecting" ? "Reading OBJ8 geometry and tracing texture references." : "The archive never leaves this device."}</p>
+              {stage !== "inspecting" && (
+                <button className="button button--primary" onClick={() => inputRef.current?.click()}>Select aircraft ZIP</button>
+              )}
+              <div className="format-row" aria-label="Recognized source assets">
+                <span>ACF</span><span>OBJ8</span><span>PNG</span><span>DDS</span><span>ATTR</span>
+              </div>
+            </div>
+          )}
+
+          {inspection && stage !== "select" && stage !== "inspecting" && (
+            <div className="results-grid">
+              <div className="results-main">
+                <div className="metric-grid">
+                  <article><span>Objects</span><strong>{formatNumber(inspection.models.length)}</strong></article>
+                  <article><span>Triangles</span><strong>{formatNumber(inspection.totals.triangles)}</strong></article>
+                  <article><span>Textures</span><strong>{formatNumber(inspection.textureFiles.length)}</strong></article>
+                  <article><span>Archive</span><strong>{formatBytes(inspection.totals.sourceBytes)}</strong></article>
+                </div>
+
+                <section className="panel">
+                  <div className="panel__heading">
+                    <div><p className="section-kicker">Geometry inventory</p><h3>OBJ8 meshes</h3></div>
+                    <span className="chip">{formatNumber(inspection.totals.vertices)} vertices</span>
+                  </div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>Object</th><th>Vertices</th><th>Triangles</th><th>Diffuse texture</th></tr></thead>
+                      <tbody>
+                        {inspection.models.map((model) => (
+                          <tr key={model.path}>
+                            <td title={model.path}>{model.name}</td>
+                            <td>{formatNumber(model.vertices.length)}</td>
+                            <td>{formatNumber(model.triangles.length)}</td>
+                            <td className={model.texturePath ? "" : "muted"}>{model.texturePath?.split("/").pop() ?? "None"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                {warnings.length > 0 && (
+                  <section className="panel">
+                    <div className="panel__heading"><div><p className="section-kicker">Preflight report</p><h3>{warnings.length} item{warnings.length === 1 ? "" : "s"} to review</h3></div></div>
+                    <ul className="diagnostics">{warnings.map((diagnostic, index) => <DiagnosticRow key={`${diagnostic.code}-${diagnostic.file}-${index}`} diagnostic={diagnostic} />)}</ul>
+                  </section>
+                )}
+              </div>
+
+              <aside className="export-card">
+                <p className="section-kicker">Export settings</p>
+                <h3>OpenFlight package</h3>
+
+                <label>
+                  Output name
+                  <input
+                    value={options.outputName}
+                    onChange={(event) => setOptions({ ...options, outputName: event.target.value })}
+                    spellCheck={false}
+                  />
+                </label>
+
+                <label>
+                  Coordinates
+                  <select value={options.coordinateMode} onChange={(event) => setOptions({ ...options, coordinateMode: event.target.value as ConversionOptions["coordinateMode"] })}>
+                    <option value="openflight-z-up">OpenFlight Z-up (recommended)</option>
+                    <option value="keep-xplane">Keep X-Plane axes</option>
+                  </select>
+                </label>
+
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={options.includeUnreferencedTextures}
+                    onChange={(event) => setOptions({ ...options, includeUnreferencedTextures: event.target.checked })}
+                  />
+                  <span><strong>Include every texture</strong><small>Also copy textures not referenced by an OBJ8 file.</small></span>
+                </label>
+
+                <div className="export-note">
+                  <span aria-hidden="true">✓</span>
+                  <p><strong>Textures stay external.</strong> OpenFlight references image files by path, so the ZIP package is the texture-complete deliverable.</p>
+                </div>
+
+                {stage !== "complete" && (
+                  <button className="button button--primary button--full" disabled={blockingErrors || stage === "converting" || !options.outputName.trim()} onClick={() => void runConversion()}>
+                    {stage === "converting" ? "Building OpenFlight package…" : blockingErrors ? "Resolve blocking errors" : "Convert aircraft"}
+                  </button>
+                )}
+
+                {stage === "complete" && result && (
+                  <div className="complete-box">
+                    <span className="complete-box__icon" aria-hidden="true">✓</span>
+                    <h4>Package validated</h4>
+                    <p>{formatNumber(result.triangleCount)} triangles and {result.textureCount} texture files are ready.</p>
+                    <button className="button button--primary button--full" onClick={() => downloadBytes(result.packageZip, result.packageFileName, "application/zip")}>Download texture-complete ZIP</button>
+                    <button className="button button--secondary button--full" onClick={() => downloadBytes(result.flt, result.fltFileName, "model/vnd.openflight")}>Download .FLT only</button>
+                  </div>
+                )}
+              </aside>
+            </div>
+          )}
+
+          {fatalError && <div className="fatal-error" role="alert"><strong>Couldn’t continue</strong><span>{fatalError}</span></div>}
+        </section>
+
+        <section className="privacy-strip">
+          <div><span aria-hidden="true">⌁</span><p><strong>Local processing</strong><small>ZIP extraction, geometry conversion, validation, and packaging run in your browser.</small></p></div>
+          <div><span aria-hidden="true">◇</span><p><strong>OpenFlight 16.0</strong><small>Big-endian binary records with vertex normals, UVs, faces, and texture palette references.</small></p></div>
+          <div><span aria-hidden="true">↗</span><p><strong>Honest diagnostics</strong><small>Unsupported X-Plane animation and placement behavior is reported before export.</small></p></div>
+        </section>
+      </main>
+
+      <footer>
+        <span>XPlane2FLT · MIT licensed</span>
+        <a href="https://github.com/mr-jamz/XPlane2FLT" target="_blank" rel="noreferrer">View source on GitHub</a>
+      </footer>
+    </div>
+  );
+}
+
+export default App;
+
