@@ -1,6 +1,7 @@
 # XPlane2FLT
 
 A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry as a binary OpenFlight 16.0 (`.flt`) database with its texture files intact.
+Access it [HERE](https://mr-jamz.github.io/XPlane2FLT/)
 
 ## What it does
 
