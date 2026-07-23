@@ -54,7 +54,29 @@ function findActualPath(pathLookup: Map<string, string>, requested: string, from
   const requestedBase = basename(requested).toLowerCase();
   const objectDirectory = dirname(fromFile).toLowerCase();
   const candidates = [...pathLookup.values()].filter((candidate) => basename(candidate).toLowerCase() === requestedBase);
-  return candidates.find((candidate) => dirname(candidate).toLowerCase() === objectDirectory) ?? candidates[0];
+  const exactName = candidates.find((candidate) => dirname(candidate).toLowerCase() === objectDirectory) ?? candidates[0];
+  if (exactName) return exactName;
+
+  // X-Plane commonly accepts a same-stem DDS in place of the PNG named by an
+  // OBJ (and vice versa). Mirror that lookup before declaring it missing.
+  const requestedStem = removeExtension(requestedBase).toLowerCase();
+  const compatibleExtensions = new Set(["png", "dds", "bmp", "jpg", "jpeg", "tga", "tif", "tiff"]);
+  const stemCandidates = [...pathLookup.values()].filter((candidate) => (
+    removeExtension(basename(candidate)).toLowerCase() === requestedStem
+    && compatibleExtensions.has(extension(candidate))
+  ));
+  const sameStem = stemCandidates.find((candidate) => dirname(candidate).toLowerCase() === objectDirectory)
+    ?? stemCandidates[0];
+  if (sameStem) return sameStem;
+
+  // A smaller number of aircraft packages also differ only by a plural suffix
+  // (for example pilot.png in the OBJ and pilots.dds in the archive).
+  const alternateStem = requestedStem.endsWith("s") ? requestedStem.slice(0, -1) : `${requestedStem}s`;
+  return [...pathLookup.values()].find((candidate) => (
+    dirname(candidate).toLowerCase() === objectDirectory
+    && removeExtension(basename(candidate)).toLowerCase() === alternateStem
+    && compatibleExtensions.has(extension(candidate))
+  ));
 }
 
 function resolveModelTextures(model: Obj8Model, lookup: Map<string, string>, diagnostics: Diagnostic[]): Obj8Model {
@@ -195,6 +217,14 @@ export async function convertArchive(
   const selectedPathSet = new Set(options.selectedModelPaths.map((path) => path.toLowerCase()));
   const selectedModels = inspection.models.filter((model) => selectedPathSet.has(model.path.toLowerCase()));
   if (selectedModels.length === 0) throw new Error("Select at least one OBJ8 mesh before converting.");
+  const untexturedModels = selectedModels.filter((model) => model.triangles.length > 0 && !model.texturePath);
+  if (untexturedModels.length > 0) {
+    const examples = untexturedModels.slice(0, 4).map((model) => basename(model.path)).join(", ");
+    throw new Error(
+      `${untexturedModels.length} selected mesh${untexturedModels.length === 1 ? "" : "es"} have no resolvable diffuse texture`
+      + ` (${examples}${untexturedModels.length > 4 ? ", …" : ""}). Add the missing PNG/DDS files or deselect those meshes before converting.`,
+    );
+  }
   const optimized = optimizeModels(selectedModels, options.optimization);
   const exportModels = optimized.models;
   const normalizedEntries = new Map<string, JSZipObject>();

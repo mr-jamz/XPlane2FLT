@@ -12,6 +12,8 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 - Preserves UV coordinates, vertex normals, diffuse texture references, and original texture bytes.
 - Offers Original, Balanced, Performance, Aggressive, and custom triangle targets.
 - Simplifies every exterior part independently with a configurable per-part minimum.
+- Resolves X-Plane's common same-stem PNG/DDS texture substitutions (including singular/plural filename variants).
+- Stops conversion when a selected mesh would otherwise be exported without a diffuse texture.
 - Protects UV seams, hard edges, and thin components such as rotor blades, landing gear, probes, and antennas.
 - Optionally welds duplicate vertices, removes degenerate/duplicate faces, and downsizes PNG/JPEG textures.
 - Shows original-versus-optimized triangle and estimated FLT sizes before conversion.
