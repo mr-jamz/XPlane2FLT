@@ -8,7 +8,7 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 - Finds `.acf`, OBJ8, texture, and texture attribute assets.
 - Parses `VT`, `IDX`/`IDX10`, `TRIS`, texture references, and culling state from OBJ8 files.
 - Converts X-Plane Y-up coordinates to OpenFlight Z-up coordinates by default.
-- Writes real big-endian OpenFlight 16.0 mesh records with local vertex pools and indexed triangle strips.
+- Writes real big-endian OpenFlight 16.0 Face, Vertex Palette, and Vertex List records supported by ModelConverterX 1.8.
 - Preserves UV coordinates, vertex normals, diffuse texture references, and original texture bytes.
 - Validates the generated record stream before enabling download.
 - Exports a texture-complete ZIP containing the `.flt`, textures, and a JSON conversion report.
@@ -17,7 +17,7 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 
 The current milestone converts static OBJ8 triangle geometry. All discovered OBJ8 files are combined at their authored coordinates. X-Plane dataref animations, ACF attachment transforms, LOD switching, manipulators, normal-map shading, and lit-texture behavior are reported but not yet recreated as OpenFlight behavior. Lit and normal texture files are still preserved in the output package when referenced.
 
-OpenFlight stores texture paths rather than embedding image data in the `.flt`, so the exported ZIP is the complete deliverable. Keep its `.flt` and `textures/` directory together. The mesh exporter avoids the one-face-per-triangle hierarchy that can overwhelm importers such as ModelConverterX.
+OpenFlight stores texture paths rather than embedding image data in the `.flt`, so the exported ZIP is the complete deliverable. Keep its `.flt` and `textures/` directory together. The exporter uses a preallocated binary buffer to keep large face-based conversions within practical browser memory limits.
 
 ## Run locally
 

@@ -127,7 +127,7 @@ function App() {
   const selectedSet = new Set(options.selectedModelPaths);
   const selectedModels = inspection?.models.filter((model) => selectedSet.has(model.path)) ?? [];
   const selectedTriangles = selectedModels.reduce((sum, model) => sum + model.triangles.length, 0);
-  const estimatedFltBytes = selectedModels.reduce((sum, model) => sum + model.vertices.length * 44 + model.triangles.length * 10 + 120, 380);
+  const estimatedFltBytes = selectedModels.reduce((sum, model) => sum + model.vertices.length * 64 + model.triangles.length * 104 + 36, 1_000);
 
   const toggleModel = (path: string) => setOptions((current) => ({
     ...current,

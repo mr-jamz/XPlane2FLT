@@ -244,7 +244,7 @@ export async function convertArchive(
       {
         generator: "XPlane2FLT",
         openFlightVersion: "16.0",
-        geometryEncoding: "mesh-84-local-vertex-pool-85-mesh-primitive-86",
+        geometryEncoding: "modelconverterx-compatible-face-5-vertex-palette-67-vertex-list-72",
         sourceArchive: inspection.archiveName,
         coordinateMode: options.coordinateMode,
         objects: selectedModels.map((model) => ({

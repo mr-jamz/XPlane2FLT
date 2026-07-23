@@ -16,7 +16,7 @@ function recordOpcodes(bytes: Uint8Array): number[] {
 }
 
 describe("OpenFlight writer", () => {
-  it("writes valid compact OpenFlight mesh records with textured geometry", () => {
+  it("writes ModelConverterX-compatible face records with textured geometry", () => {
     const model = parseObj8(
       "objects/body.obj",
       `I\n800\nOBJ\nTEXTURE body.png\nVT 0 0 0 0 1 0 0 0\nVT 1 0 0 0 1 0 1 0\nVT 0 1 0 0 1 0 0 1\nIDX 0 1 2\nTRIS 0 3`,
@@ -35,22 +35,42 @@ describe("OpenFlight writer", () => {
     expect(view.getInt32(12, false)).toBe(1600);
     expect(validateOpenFlight(bytes)).toEqual([]);
     const opcodes = recordOpcodes(bytes);
-    expect(opcodes).toEqual(expect.arrayContaining([1, 64, 2, 84, 85, 86]));
-    expect(opcodes).not.toContain(5);
-    expect(opcodes).not.toContain(67);
-    expect(opcodes).not.toContain(72);
+    expect(opcodes).toEqual(expect.arrayContaining([1, 64, 67, 2, 4, 5, 70, 72]));
+    expect(opcodes).not.toContain(84);
+    expect(opcodes).not.toContain(85);
+    expect(opcodes).not.toContain(86);
+    expect(opcodes.indexOf(10)).toBeLessThan(opcodes.indexOf(2));
+    expect(opcodes.filter((opcode) => opcode === 10)).toHaveLength(4);
+    expect(opcodes.filter((opcode) => opcode === 11)).toHaveLength(4);
   });
 
-  it("splits geometry into legal local vertex pools", () => {
+  it("writes large geometry through a single valid vertex palette", () => {
     const lines = ["I", "800", "OBJ"];
     for (let index = 0; index < 4500; index += 1) lines.push(`VT ${index % 17} ${Math.floor(index / 17)} 0 0 1 0 0 0`);
     for (let index = 0; index < 4500; index += 10) lines.push(`IDX10 ${index} ${index + 1} ${index + 2} ${index + 3} ${index + 4} ${index + 5} ${index + 6} ${index + 7} ${index + 8} ${index + 9}`);
     lines.push("TRIS 0 4500");
     const bytes = buildOpenFlight({ models: [parseObj8("large.obj", lines.join("\n"))], textures: [], coordinateMode: "keep-xplane" });
     const opcodes = recordOpcodes(bytes);
-    expect(opcodes.filter((opcode) => opcode === 84).length).toBeGreaterThan(1);
-    expect(opcodes.filter((opcode) => opcode === 84).length).toBe(opcodes.filter((opcode) => opcode === 85).length);
-    expect(opcodes.filter((opcode) => opcode === 84).length).toBe(opcodes.filter((opcode) => opcode === 86).length);
+    expect(opcodes.filter((opcode) => opcode === 67)).toHaveLength(1);
+    expect(opcodes.filter((opcode) => opcode === 5)).toHaveLength(1500);
+    expect(opcodes.filter((opcode) => opcode === 72)).toHaveLength(1500);
     expect(validateOpenFlight(bytes)).toEqual([]);
+  });
+
+  it("rejects the balanced but parentless hierarchy that makes ModelConverterX report Stack empty", () => {
+    const model = parseObj8(
+      "body.obj",
+      `I\n800\nOBJ\nVT 0 0 0 0 1 0 0 0\nVT 1 0 0 0 1 0 1 0\nVT 0 1 0 0 1 0 0 1\nIDX 0 1 2\nTRIS 0 3`,
+    );
+    const bytes = buildOpenFlight({ models: [model], textures: [], coordinateMode: "keep-xplane" });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let groupOffset = 0;
+    while (view.getUint16(groupOffset, false) !== 2) groupOffset += view.getUint16(groupOffset + 2, false);
+    const withoutHeaderLevel = new Uint8Array(bytes.byteLength - 8);
+    withoutHeaderLevel.set(bytes.subarray(0, groupOffset - 4));
+    withoutHeaderLevel.set(bytes.subarray(groupOffset, bytes.byteLength - 4), groupOffset - 4);
+    expect(validateOpenFlight(withoutHeaderLevel)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "FLT_MISSING_HEADER_LEVEL", severity: "error" }),
+    ]));
   });
 });
