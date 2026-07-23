@@ -10,12 +10,17 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 - Converts X-Plane Y-up coordinates to OpenFlight Z-up coordinates by default.
 - Writes real big-endian OpenFlight 16.0 Face, Vertex Palette, and Vertex List records supported by ModelConverterX 1.8.
 - Preserves UV coordinates, vertex normals, diffuse texture references, and original texture bytes.
+- Offers Original, Balanced, Performance, Aggressive, and custom triangle targets.
+- Simplifies every exterior part independently with a configurable per-part minimum.
+- Protects UV seams, hard edges, and thin components such as rotor blades, landing gear, probes, and antennas.
+- Optionally welds duplicate vertices, removes degenerate/duplicate faces, and downsizes PNG/JPEG textures.
+- Shows original-versus-optimized triangle and estimated FLT sizes before conversion.
 - Validates the generated record stream before enabling download.
 - Exports a texture-complete ZIP containing the `.flt`, textures, and a JSON conversion report.
 
 ## Current conversion scope
 
-The current milestone converts static OBJ8 triangle geometry. All discovered OBJ8 files are combined at their authored coordinates. X-Plane dataref animations, ACF attachment transforms, LOD switching, manipulators, normal-map shading, and lit-texture behavior are reported but not yet recreated as OpenFlight behavior. Lit and normal texture files are still preserved in the output package when referenced.
+The converter handles static OBJ8 triangle geometry. Selected exterior OBJ8 files are combined at their authored coordinates. X-Plane dataref animations, ACF attachment transforms, LOD switching, manipulators, normal-map shading, and lit-texture behavior are reported but not recreated as OpenFlight behavior. Lit and normal texture files are still preserved in the output package when referenced.
 
 OpenFlight stores texture paths rather than embedding image data in the `.flt`, so the exported ZIP is the complete deliverable. Keep its `.flt` and `textures/` directory together. The exporter uses a preallocated binary buffer to keep large face-based conversions within practical browser memory limits.
 
@@ -52,10 +57,18 @@ npm test
 npm run build
 ```
 
+To check a generated file against the exact MCX 1.8 reader signatures and hierarchy rules:
+
+```bash
+node scripts/verify-mcx-compat.mjs /path/to/ModelConverterX.zip /path/to/model.flt
+```
+
 ## Architecture
 
 - `src/core/obj8.ts` — X-Plane OBJ8 parser
 - `src/core/openflight.ts` — OpenFlight 16.0 binary writer and validator
+- `src/core/optimizer.ts` — per-part geometry cleanup, allocation, and shape-aware simplification
+- `src/core/texture.ts` — optional browser-side PNG/JPEG downscaling
 - `src/core/archive.ts` — ZIP inspection, texture resolution, conversion, and packaging
 - `src/App.tsx` — browser workflow and diagnostics UI
 - `tests/` — parser, binary writer, and end-to-end archive tests

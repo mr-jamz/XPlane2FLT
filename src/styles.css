@@ -137,6 +137,18 @@ tr.is-selected td { background: rgba(169, 240, 77, .025); }
 .checkbox-row input:checked { background: var(--accent); box-shadow: inset 0 0 0 4px #08120f; }
 .checkbox-row strong, .checkbox-row small { display: block; }
 .checkbox-row small { color: #71847e; font-weight: 400; line-height: 1.45; margin-top: 4px; }
+.settings-section { margin: 24px -10px; padding: 18px 10px 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.settings-section__heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 18px; }
+.settings-section__heading span { color: #d4e1dc; font: 600 11px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .07em; }
+.settings-section__heading small, .field-help { color: #647873; font-size: 9px; line-height: 1.45; }
+.field-help { display: block; margin-top: -11px; margin-bottom: 18px; font-weight: 400; }
+.checkbox-row--compact { margin-bottom: 13px !important; }
+.checkbox-row--compact small { font-size: 9px; }
+.range-label > span { display: flex; align-items: center; justify-content: space-between; }
+.range-label > span strong { color: var(--accent); font: 500 10px "DM Mono", monospace; }
+.export-card input[type="range"] { appearance: none; width: 100%; height: 4px; margin: 6px 0 5px; padding: 0; border: 0; background: #263b35; accent-color: var(--accent); }
+.export-card input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); border: 4px solid #0b1513; box-shadow: 0 0 0 1px #6b8b7e; cursor: pointer; }
+.export-card input[type="range"]:disabled { opacity: .4; }
 .export-note { display: grid; grid-template-columns: 25px 1fr; gap: 10px; padding: 14px; margin: 25px 0; border: 1px solid #274337; background: rgba(28, 69, 47, .16); }
 .export-note > span { color: var(--accent); }
 .export-note p { margin: 0; color: #8fa59d; font-size: 10px; line-height: 1.55; }

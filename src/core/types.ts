@@ -57,6 +57,30 @@ export interface ConversionOptions {
   coordinateMode: "openflight-z-up" | "keep-xplane";
   includeUnreferencedTextures: boolean;
   selectedModelPaths: string[];
+  optimization: GeometryOptimizationOptions;
+}
+
+export type OptimizationPreset = "original" | "balanced" | "performance" | "aggressive" | "custom";
+export type TextureMaxSize = 0 | 4096 | 2048 | 1024;
+
+export interface GeometryOptimizationOptions {
+  preset: OptimizationPreset;
+  targetTriangles: number;
+  minTrianglesPerPart: number;
+  preserveThinParts: boolean;
+  weldVertices: boolean;
+  removeDegenerateFaces: boolean;
+  removeDuplicateFaces: boolean;
+  textureMaxSize: TextureMaxSize;
+}
+
+export interface OptimizationStats {
+  originalTriangles: number;
+  cleanedTriangles: number;
+  optimizedTriangles: number;
+  originalVertices: number;
+  optimizedVertices: number;
+  parts: Array<{ path: string; originalTriangles: number; optimizedTriangles: number }>;
 }
 
 export interface ConversionResult {
@@ -68,4 +92,5 @@ export interface ConversionResult {
   textureCount: number;
   objectCount: number;
   triangleCount: number;
+  optimization: OptimizationStats;
 }

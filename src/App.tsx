@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { convertArchive, inspectArchive } from "./core/archive";
 import { downloadBytes } from "./core/download";
+import { estimateOptimizedTriangles } from "./core/optimizer";
 import { removeExtension, safeFileStem } from "./core/path";
 import type { ArchiveInspection, ConversionOptions, ConversionResult, Diagnostic } from "./core/types";
 
@@ -60,6 +61,11 @@ function App() {
     coordinateMode: "openflight-z-up",
     includeUnreferencedTextures: false,
     selectedModelPaths: [],
+    optimization: {
+      preset: "balanced", targetTriangles: 120_000, minTrianglesPerPart: 750,
+      preserveThinParts: true, weldVertices: true, removeDegenerateFaces: true,
+      removeDuplicateFaces: true, textureMaxSize: 0,
+    },
   });
 
   const processFile = async (file: File) => {
@@ -127,7 +133,10 @@ function App() {
   const selectedSet = new Set(options.selectedModelPaths);
   const selectedModels = inspection?.models.filter((model) => selectedSet.has(model.path)) ?? [];
   const selectedTriangles = selectedModels.reduce((sum, model) => sum + model.triangles.length, 0);
-  const estimatedFltBytes = selectedModels.reduce((sum, model) => sum + model.vertices.length * 64 + model.triangles.length * 104 + 36, 1_000);
+  const estimatedOptimizedTriangles = estimateOptimizedTriangles(selectedModels, options.optimization);
+  const ratio = selectedTriangles ? estimatedOptimizedTriangles / selectedTriangles : 1;
+  const estimatedVertices = selectedModels.reduce((sum, model) => sum + model.vertices.length, 0) * Math.min(1, Math.max(.08, ratio));
+  const estimatedFltBytes = 1_000 + estimatedVertices * 64 + estimatedOptimizedTriangles * 104 + selectedModels.length * 36;
 
   const toggleModel = (path: string) => setOptions((current) => ({
     ...current,
@@ -271,6 +280,67 @@ function App() {
                   </select>
                 </label>
 
+                <div className="settings-section">
+                  <div className="settings-section__heading"><span>Geometry optimization</span><small>Every selected part is retained</small></div>
+                  <label>
+                    Detail preset
+                    <select
+                      value={options.optimization.preset}
+                      onChange={(event) => {
+                        const preset = event.target.value as ConversionOptions["optimization"]["preset"];
+                        const targets = { original: selectedTriangles, balanced: 120_000, performance: 65_000, aggressive: 35_000, custom: options.optimization.targetTriangles };
+                        setOptions({ ...options, optimization: { ...options.optimization, preset, targetTriangles: targets[preset] } });
+                      }}
+                    >
+                      <option value="original">Original geometry</option>
+                      <option value="balanced">Balanced · ~120k triangles</option>
+                      <option value="performance">Performance · ~65k triangles</option>
+                      <option value="aggressive">Aggressive · ~35k triangles</option>
+                      <option value="custom">Custom target</option>
+                    </select>
+                  </label>
+                  <label className="range-label">
+                    <span><span>Target triangles</span><strong>{formatNumber(Math.min(selectedTriangles, estimatedOptimizedTriangles))}</strong></span>
+                    <input
+                      type="range"
+                      min={Math.min(selectedTriangles, Math.max(5_000, selectedModels.length * options.optimization.minTrianglesPerPart))}
+                      max={Math.max(5_001, selectedTriangles)}
+                      step={1_000}
+                      value={Math.min(selectedTriangles, Math.max(5_000, options.optimization.targetTriangles))}
+                      disabled={options.optimization.preset === "original" || selectedTriangles < 5_001}
+                      onChange={(event) => setOptions({ ...options, optimization: { ...options.optimization, preset: "custom", targetTriangles: Number(event.target.value) } })}
+                    />
+                  </label>
+                  <label>
+                    Minimum per part
+                    <input type="number" min={4} max={10_000} step={100} value={options.optimization.minTrianglesPerPart}
+                      onChange={(event) => setOptions({ ...options, optimization: { ...options.optimization, minTrianglesPerPart: Math.max(4, Number(event.target.value) || 4) } })} />
+                  </label>
+                  {[
+                    ["preserveThinParts", "Preserve thin parts", "Protects blades, gear, probes, and antennas."],
+                    ["weldVertices", "Weld duplicate vertices", "Merges identical vertices without crossing UV seams or hard edges."],
+                    ["removeDegenerateFaces", "Remove invisible faces", "Drops zero-area and collapsed triangles."],
+                    ["removeDuplicateFaces", "Remove duplicate faces", "Removes repeated triangles while keeping every part."],
+                  ].map(([key, title, description]) => (
+                    <label className="checkbox-row checkbox-row--compact" key={key}>
+                      <input type="checkbox" checked={Boolean(options.optimization[key as keyof typeof options.optimization])}
+                        onChange={(event) => setOptions({ ...options, optimization: { ...options.optimization, [key]: event.target.checked } })} />
+                      <span><strong>{title}</strong><small>{description}</small></span>
+                    </label>
+                  ))}
+                  <label>
+                    Maximum texture size
+                    <select value={options.optimization.textureMaxSize}
+                      onChange={(event) => setOptions({ ...options, optimization: { ...options.optimization, textureMaxSize: Number(event.target.value) as ConversionOptions["optimization"]["textureMaxSize"] } })}>
+                      <option value={0}>Keep original textures</option>
+                      <option value={4096}>4K maximum</option>
+                      <option value={2048}>2K maximum</option>
+                      <option value={1024}>1K maximum</option>
+                    </select>
+                    <small className="field-help">PNG/JPEG textures resize locally. DDS stays unchanged for MCX compatibility.</small>
+                  </label>
+                </div>
+
                 <label className="checkbox-row">
                   <input
                     type="checkbox"
@@ -287,7 +357,7 @@ function App() {
 
                 <div className="export-summary">
                   <span>{selectedModels.length} exterior objects</span>
-                  <span>{formatNumber(selectedTriangles)} triangles</span>
+                  <span>{formatNumber(selectedTriangles)} → ≈ {formatNumber(estimatedOptimizedTriangles)} triangles</span>
                   <span>≈ {formatBytes(estimatedFltBytes)} FLT</span>
                 </div>
 
@@ -301,7 +371,7 @@ function App() {
                   <div className="complete-box">
                     <span className="complete-box__icon" aria-hidden="true">✓</span>
                     <h4>Package validated</h4>
-                    <p>{formatNumber(result.triangleCount)} triangles and {result.textureCount} texture files are ready.</p>
+                    <p>{formatNumber(result.optimization.originalTriangles)} → {formatNumber(result.triangleCount)} triangles across {result.objectCount} parts, with {result.textureCount} texture files.</p>
                     <button className="button button--primary button--full" onClick={() => downloadBytes(result.packageZip, result.packageFileName, "application/zip")}>Download texture-complete ZIP</button>
                     <button className="button button--secondary button--full" onClick={() => downloadBytes(result.flt, result.fltFileName, "model/vnd.openflight")}>Download .FLT only</button>
                   </div>

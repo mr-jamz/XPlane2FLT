@@ -1,6 +1,8 @@
 import JSZip, { type JSZipObject } from "jszip";
 import { buildOpenFlight, validateOpenFlight } from "./openflight";
 import { parseObj8 } from "./obj8";
+import { optimizeModels } from "./optimizer";
+import { resizeTexture } from "./texture";
 import {
   basename,
   dirname,
@@ -193,6 +195,8 @@ export async function convertArchive(
   const selectedPathSet = new Set(options.selectedModelPaths.map((path) => path.toLowerCase()));
   const selectedModels = inspection.models.filter((model) => selectedPathSet.has(model.path.toLowerCase()));
   if (selectedModels.length === 0) throw new Error("Select at least one OBJ8 mesh before converting.");
+  const optimized = optimizeModels(selectedModels, options.optimization);
+  const exportModels = optimized.models;
   const normalizedEntries = new Map<string, JSZipObject>();
   for (const [path, entry] of Object.entries(zip.files)) {
     if (!entry.dir) normalizedEntries.set(normalizeArchivePath(path).toLowerCase(), entry);
@@ -220,7 +224,7 @@ export async function convertArchive(
   const fltFileName = `${outputStem}.flt`;
   const packageFileName = `${outputStem}-openflight.zip`;
   const flt = buildOpenFlight({
-    models: selectedModels,
+    models: exportModels,
     textures: diffuseBindings,
     coordinateMode: options.coordinateMode,
     databaseId: outputStem,
@@ -232,10 +236,15 @@ export async function convertArchive(
 
   const outputZip = new JSZip();
   outputZip.file(fltFileName, flt);
+  const textureReport: Array<{ source: string; output: string; resized: boolean; width?: number; height?: number }> = [];
   for (const sourcePath of selectedTextures) {
     const entry = normalizedEntries.get(sourcePath.toLowerCase());
     const outputPath = outputPathBySource.get(sourcePath.toLowerCase());
-    if (entry && outputPath) outputZip.file(outputPath, await entry.async("uint8array"));
+    if (entry && outputPath) {
+      const resized = await resizeTexture(await entry.async("uint8array"), outputPath, options.optimization.textureMaxSize);
+      outputZip.file(outputPath, resized.bytes);
+      textureReport.push({ source: sourcePath, output: outputPath, resized: resized.resized, width: resized.width, height: resized.height });
+    }
   }
 
   outputZip.file(
@@ -247,16 +256,15 @@ export async function convertArchive(
         geometryEncoding: "modelconverterx-compatible-face-5-vertex-palette-67-vertex-list-72",
         sourceArchive: inspection.archiveName,
         coordinateMode: options.coordinateMode,
-        objects: selectedModels.map((model) => ({
+        optimization: { settings: options.optimization, ...optimized.stats },
+        objects: exportModels.map((model, index) => ({
           source: model.path,
           vertices: model.vertices.length,
           triangles: model.triangles.length,
+          originalTriangles: selectedModels[index].triangles.length,
           diffuseTexture: model.texturePath ?? null,
         })),
-        copiedTextures: selectedTextures.map((sourcePath) => ({
-          source: sourcePath,
-          output: outputPathBySource.get(sourcePath.toLowerCase()),
-        })),
+        copiedTextures: textureReport,
         diagnostics: inspection.diagnostics,
       },
       null,
@@ -278,7 +286,8 @@ export async function convertArchive(
     packageFileName,
     diagnostics: [...inspection.diagnostics, ...validationDiagnostics],
     textureCount: selectedTextures.length,
-    objectCount: selectedModels.filter((model) => model.triangles.length > 0).length,
-    triangleCount: selectedModels.reduce((sum, model) => sum + model.triangles.length, 0),
+    objectCount: exportModels.filter((model) => model.triangles.length > 0).length,
+    triangleCount: optimized.stats.optimizedTriangles,
+    optimization: optimized.stats,
   };
 }

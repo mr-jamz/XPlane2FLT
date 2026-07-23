@@ -40,6 +40,16 @@ describe("aircraft archive pipeline", () => {
       coordinateMode: "openflight-z-up",
       includeUnreferencedTextures: false,
       selectedModelPaths: inspection.models.map((model) => model.path),
+      optimization: {
+        preset: "original",
+        targetTriangles: 1,
+        minTrianglesPerPart: 4,
+        preserveThinParts: true,
+        weldVertices: true,
+        removeDegenerateFaces: true,
+        removeDuplicateFaces: true,
+        textureMaxSize: 0,
+      },
     });
     expect(result.fltFileName).toBe("demo-aircraft.flt");
     expect(result.textureCount).toBe(2);
