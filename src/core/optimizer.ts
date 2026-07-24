@@ -77,11 +77,6 @@ function clean(model: Obj8Model, options: GeometryOptimizationOptions): Obj8Mode
   return compact(model, triangles, vertices);
 }
 
-function normalized(values: [number, number, number]): [number, number, number] {
-  const length = Math.hypot(...values) || 1;
-  return values.map((value) => value / length) as [number, number, number];
-}
-
 function cluster(model: Obj8Model, divisions: number, preserveThinParts: boolean): Obj8Model {
   if (!model.vertices.length) return model;
   const box = getBounds(model.vertices);
@@ -96,7 +91,7 @@ function cluster(model: Obj8Model, divisions: number, preserveThinParts: boolean
     if (previous !== undefined && previous !== uvKey) seamPositions.add(positionKey);
     else positionUse.set(positionKey, uvKey);
   }
-  type Cluster = { count: number; position: [number, number, number]; normal: [number, number, number]; uv: [number, number] };
+  type Cluster = { members: number[]; positionSum: [number, number, number] };
   const clusters: Cluster[] = [];
   const byKey = new Map<string, number>();
   const remap: number[] = [];
@@ -113,22 +108,31 @@ function cluster(model: Obj8Model, divisions: number, preserveThinParts: boolean
     if (index === undefined) {
       index = clusters.length;
       byKey.set(key, index);
-      clusters.push({ count: 0, position: [0, 0, 0], normal: [0, 0, 0], uv: [0, 0] });
+      clusters.push({ members: [], positionSum: [0, 0, 0] });
     }
     const target = clusters[index];
-    target.count += 1;
+    target.members.push(remap.length);
     for (let axis = 0; axis < 3; axis += 1) {
-      target.position[axis] += vertex.position[axis];
-      target.normal[axis] += vertex.normal[axis];
+      target.positionSum[axis] += vertex.position[axis];
     }
-    target.uv[0] += vertex.uv[0]; target.uv[1] += vertex.uv[1];
     remap.push(index);
   }
-  const vertices: Obj8Vertex[] = clusters.map((item) => ({
-    position: item.position.map((value) => value / item.count) as [number, number, number],
-    normal: normalized(item.normal),
-    uv: [item.uv[0] / item.count, item.uv[1] / item.count],
-  }));
+  // A representative must be an actual authored OBJ vertex. Averaging positions
+  // can shift thin/disconnected parts and invent coordinates that never existed.
+  const vertices: Obj8Vertex[] = clusters.map((item) => {
+    const centroid = item.positionSum.map((value) => value / item.members.length);
+    let representative = item.members[0];
+    let nearestDistance = Infinity;
+    for (const sourceIndex of item.members) {
+      const position = model.vertices[sourceIndex].position;
+      const distance = position.reduce((sum, value, axis) => sum + (value - centroid[axis]) ** 2, 0);
+      if (distance < nearestDistance) {
+        representative = sourceIndex;
+        nearestDistance = distance;
+      }
+    }
+    return model.vertices[representative];
+  });
   const seen = new Set<string>();
   const triangles: Obj8Triangle[] = [];
   for (const source of model.triangles) {

@@ -39,6 +39,19 @@ describe("geometry optimizer", () => {
     expect(model.vertices.every((vertex) => vertex.uv.every(Number.isFinite))).toBe(true);
   });
 
+  it("never invents or shifts vertex coordinates during simplification", () => {
+    const source = grid("aircraft.obj", 80, 50);
+    const sourcePositions = new Set(source.vertices.map((vertex) => vertex.position.join(",")));
+    const model = optimizeModels([source], {
+      ...options,
+      targetTriangles: 500,
+      minTrianglesPerPart: 4,
+    }).models[0];
+
+    expect(model.triangles.length).toBeLessThan(source.triangles.length);
+    expect(model.vertices.every((vertex) => sourcePositions.has(vertex.position.join(",")))).toBe(true);
+  });
+
   it("honors minimum allocation per part", () => {
     const models = [grid("a.obj", 20, 20), grid("b.obj", 20, 20)];
     expect(estimateOptimizedTriangles(models, { ...options, targetTriangles: 100 })).toBe(600);

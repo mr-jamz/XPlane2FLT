@@ -9,7 +9,7 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 - Parses `VT`, `IDX`/`IDX10`, `TRIS`, texture references, and culling state from OBJ8 files.
 - Converts X-Plane Y-up coordinates to OpenFlight Z-up coordinates by default.
 - Writes real big-endian OpenFlight 16.0 Face, Vertex Palette, and Vertex List records supported by ModelConverterX 1.8.
-- Preserves UV coordinates, vertex normals, diffuse texture references, and original texture bytes.
+- Preserves authored part coordinates, UV coordinates, vertex normals, diffuse texture references, and original texture bytes.
 - Offers Original, Balanced, Performance, Aggressive, and custom triangle targets.
 - Simplifies every exterior part independently with a configurable per-part minimum.
 - Resolves X-Plane's common same-stem PNG/DDS texture substitutions (including singular/plural filename variants).
@@ -22,7 +22,7 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 
 ## Current conversion scope
 
-The converter handles static OBJ8 triangle geometry. Selected exterior OBJ8 files are combined at their authored coordinates. X-Plane dataref animations, ACF attachment transforms, LOD switching, manipulators, normal-map shading, and lit-texture behavior are reported but not recreated as OpenFlight behavior. Lit and normal texture files are still preserved in the output package when referenced.
+The converter handles static OBJ8 triangle geometry. Selected exterior OBJ8 files are combined at their authored coordinates, and simplification only reuses source vertex positions so optimization cannot recenter or translate a part. X-Plane dataref animations, nonzero ACF attachment transforms, LOD switching, manipulators, normal-map shading, and lit-texture behavior are reported but not recreated as OpenFlight behavior. Lit and normal texture files are still preserved in the output package when referenced.
 
 OpenFlight stores texture paths rather than embedding image data in the `.flt`, so the exported ZIP is the complete deliverable. Keep its `.flt` and `textures/` directory together. The exporter uses a preallocated binary buffer to keep large face-based conversions within practical browser memory limits.
 
