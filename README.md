@@ -1,5 +1,9 @@
 # XPlane2FLT
 
+Version 9.1 rebuild: stationary/material-safe OpenFlight conversion, corrected
+ModelConverterX face winding and culling, plus an interactive selected-OBJ8
+preview.
+
 A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry as a binary OpenFlight 16.0 (`.flt`) database with its texture files intact.
 
 ## What it does
@@ -17,6 +21,9 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 - Protects UV seams, hard edges, and thin components such as rotor blades, landing gear, probes, and antennas.
 - Optionally welds duplicate vertices, removes degenerate/duplicate faces, and downsizes PNG/JPEG textures.
 - Shows original-versus-optimized triangle and estimated FLT sizes before conversion.
+- Renders the currently selected OBJ8 files in an interactive, texture-aware 3D preview before conversion.
+- Lets you orbit, zoom, pan, frame the selected package, inspect a clicked part, and remove it from the package directly from the viewport.
+- Uses adaptive preview-only triangle sampling for very large aircraft; conversion always uses the requested source/optimized geometry settings.
 - Validates the generated record stream before enabling download.
 - Exports a texture-complete ZIP containing the `.flt`, textures, and a JSON conversion report.
 
@@ -40,6 +47,9 @@ Open the local URL shown by Vite, then select an aircraft ZIP.
 ## Deploy to GitHub Pages
 
 This repository includes a GitHub Actions workflow that builds and deploys the app automatically.
+
+For this preview release, see [DEPLOYMENT.md](DEPLOYMENT.md). It includes the
+recommended `preview-v9-obj8-render` branch flow and rollback instructions.
 
 1. Upload this project to the `main` branch of your GitHub repository.
 2. Open the repository's **Settings → Pages**.
@@ -80,9 +90,11 @@ The OpenFlight writer follows the [OGC OpenFlight Scene Description Database Spe
 ## License
 
 MIT
-Version 8 uses stationary, source-triangle simplification. It never creates
+Version 9 uses stationary, source-triangle simplification. It never creates
 replacement coordinates or reconnects vertices across parts. OBJ8 position,
 normal, UV, diffuse texture, culling, shininess, emissive color, and alpha state
 are carried into ModelConverterX-compatible OpenFlight Face, Vertex Palette,
 Vertex List, Texture Palette, and Material Palette records. Conversion is
 blocked if any optimized face cannot be proven to be an intact source triangle.
+The OBJ8 viewport is an independent read-only visualization path: changing the
+camera or preview sampling never mutates the geometry supplied to the converter.
