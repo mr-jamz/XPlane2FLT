@@ -16,12 +16,14 @@ export function parseObj8(path: string, source: string): Obj8Model {
   let litTexturePath: string | undefined;
   let normalTexturePath: string | undefined;
   let doubleSided = false;
+  let drawEnabled = true;
   let material = {
     diffuse: [1, 1, 1] as [number, number, number],
     emissive: [0, 0, 0] as [number, number, number],
     shininess: 0,
     alpha: 1,
-    blended: true,
+    blended: false,
+    alphaCutoff: 0.5,
   };
   let animationDepth = 0;
   let animationWarningAdded = false;
@@ -55,6 +57,14 @@ export function parseObj8(path: string, source: string): Obj8Model {
       doubleSided = false;
       continue;
     }
+    if (command === "ATTR_DRAW_ENABLE") {
+      drawEnabled = true;
+      continue;
+    }
+    if (command === "ATTR_DRAW_DISABLE") {
+      drawEnabled = false;
+      continue;
+    }
     if (command === "ATTR_DIFFUSE_RGB") {
       const values = finiteNumbers(parts, 1, 3);
       if (values) material = { ...material, diffuse: values as [number, number, number] };
@@ -75,7 +85,12 @@ export function parseObj8(path: string, source: string): Obj8Model {
       continue;
     }
     if (command === "ATTR_NO_BLEND") {
-      material = { ...material, blended: false };
+      const values = finiteNumbers(parts, 1, 1);
+      material = {
+        ...material,
+        blended: false,
+        alphaCutoff: values ? Math.max(0, Math.min(1, values[0])) : 0.5,
+      };
       continue;
     }
     if (command === "ANIM_BEGIN") {
@@ -163,6 +178,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
         triangles.push({
           indices: [a, b, c],
           doubleSided,
+          drawEnabled,
           material: {
             ...material,
             diffuse: [...material.diffuse],

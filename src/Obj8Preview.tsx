@@ -6,8 +6,6 @@ import { DDSLoader } from "three/examples/jsm/loaders/DDSLoader.js";
 import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
 import type { Obj8MaterialState, Obj8Model } from "./core/types";
 
-const PREVIEW_TRIANGLE_BUDGET = 350_000;
-
 interface Obj8PreviewProps {
   sourceFile: File;
   models: Obj8Model[];
@@ -26,7 +24,8 @@ function materialKey(material: Obj8MaterialState | undefined, doubleSided: boole
     emissive: [0, 0, 0],
     shininess: 0,
     alpha: 1,
-    blended: true,
+    blended: false,
+    alphaCutoff: 0.5,
   };
   return [
     ...state.diffuse,
@@ -34,61 +33,20 @@ function materialKey(material: Obj8MaterialState | undefined, doubleSided: boole
     state.shininess,
     state.alpha,
     state.blended ? 1 : 0,
+    state.alphaCutoff ?? 0.5,
     doubleSided ? 1 : 0,
   ].join("|");
 }
 
 export function selectTriangleIndices(models: Obj8Model[]): Map<string, number[]> {
   const result = new Map<string, number[]>();
-  const total = models.reduce((sum, model) => sum + model.triangles.length, 0);
-  if (total <= PREVIEW_TRIANGLE_BUDGET) {
-    for (const model of models) result.set(model.path, model.triangles.map((_, index) => index));
-    return result;
-  }
-
-  const nonEmpty = models.filter((model) => model.triangles.length > 0);
-  const floor = Math.max(1, Math.min(2_000, Math.floor(PREVIEW_TRIANGLE_BUDGET / Math.max(1, nonEmpty.length * 4))));
-  let remaining = PREVIEW_TRIANGLE_BUDGET;
-  const allocations = new Map<string, number>();
-
-  for (const model of nonEmpty) {
-    const allocation = Math.min(model.triangles.length, floor);
-    allocations.set(model.path, allocation);
-    remaining -= allocation;
-  }
-  const remainingSource = nonEmpty.reduce(
-    (sum, model) => sum + Math.max(0, model.triangles.length - (allocations.get(model.path) ?? 0)),
-    0,
-  );
-  for (const model of nonEmpty) {
-    const base = allocations.get(model.path) ?? 0;
-    const proportional = remainingSource > 0
-      ? Math.floor(remaining * Math.max(0, model.triangles.length - base) / remainingSource)
-      : 0;
-    allocations.set(model.path, Math.min(model.triangles.length, base + proportional));
-  }
-
-  let allocated = [...allocations.values()].reduce((sum, value) => sum + value, 0);
-  for (const model of nonEmpty) {
-    if (allocated >= PREVIEW_TRIANGLE_BUDGET) break;
-    const current = allocations.get(model.path) ?? 0;
-    const add = Math.min(model.triangles.length - current, PREVIEW_TRIANGLE_BUDGET - allocated);
-    allocations.set(model.path, current + add);
-    allocated += add;
-  }
-
   for (const model of models) {
-    const target = allocations.get(model.path) ?? 0;
-    if (target >= model.triangles.length) {
-      result.set(model.path, model.triangles.map((_, index) => index));
-      continue;
-    }
-    const selected: number[] = [];
-    const step = model.triangles.length / Math.max(1, target);
-    for (let cursor = 0; cursor < target; cursor += 1) {
-      selected.push(Math.min(model.triangles.length - 1, Math.floor(cursor * step)));
-    }
-    result.set(model.path, selected);
+    result.set(
+      model.path,
+      model.triangles
+        .map((triangle, index) => triangle.drawEnabled === false ? -1 : index)
+        .filter((index) => index >= 0),
+    );
   }
   return result;
 }
@@ -139,8 +97,9 @@ function stateFromKey(key: string): { material: Obj8MaterialState; doubleSided: 
       shininess: values[6],
       alpha: values[7],
       blended: values[8] === 1,
+      alphaCutoff: Number.isFinite(values[9]) ? values[9] : 0.5,
     },
-    doubleSided: values[9] === 1,
+    doubleSided: values[10] === 1,
   };
 }
 
@@ -281,9 +240,10 @@ export function Obj8Preview({ sourceFile, models, onToggleModel }: Obj8PreviewPr
             roughness: 1 - Math.min(1, state.material.shininess / 128),
             metalness: 0,
             side: state.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
-            transparent: state.material.blended || state.material.alpha < 0.999,
+            transparent: state.material.blended,
             opacity: state.material.alpha,
-            alphaTest: state.material.blended ? 0.01 : 0,
+            alphaTest: state.material.blended ? 0 : state.material.alphaCutoff,
+            depthWrite: !state.material.blended,
           });
           materials.push(material);
           geometries.push(geometry);
@@ -357,7 +317,7 @@ export function Obj8Preview({ sourceFile, models, onToggleModel }: Obj8PreviewPr
         <span>Drag to orbit · wheel to zoom · right-drag to pan</span>
         <span>
           {status.sampled
-            ? `${status.visibleTriangles.toLocaleString()} of ${status.sourceTriangles.toLocaleString()} triangles shown for preview performance`
+            ? `${status.visibleTriangles.toLocaleString()} of ${status.sourceTriangles.toLocaleString()} drawable triangles`
             : `${status.visibleTriangles.toLocaleString()} source triangles`}
         </span>
       </div>

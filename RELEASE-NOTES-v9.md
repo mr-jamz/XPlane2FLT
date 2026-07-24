@@ -1,5 +1,17 @@
 # XPlane2FLT v9 — Selected OBJ8 3D Preview
 
+## v9.3 complete draw-state and solid-surface correction
+
+- Renders every selected drawable source triangle; preview sampling no longer
+  removes random fuselage faces or creates apparent holes.
+- Interprets `ATTR_draw_enable` and `ATTR_draw_disable` at each `TRIS` command.
+- Treats ordinary aircraft diffuse textures as opaque by default instead of
+  misusing their alpha channel as transparency.
+- Applies real blending only after `ATTR_blend`; `ATTR_no_blend` uses its alpha
+  cutoff and keeps depth writing enabled.
+- Keeps draw-disabled ranges out of the final OpenFlight conversion as well as
+  the preview.
+
 ## v9.2 preview orientation correction
 
 - Converts OBJ8 triangle winding at the Three.js preview boundary so ordinary
@@ -30,9 +42,7 @@ preserves its OpenFlight and ModelConverterX compatibility path.
 - Resolved PNG, JPEG, BMP, DDS, and TGA diffuse textures in the preview.
 - Orbit, zoom, pan, and frame-selection camera controls.
 - Clicked-part identification and removal from the final package.
-- Adaptive display-only triangle sampling above 350,000 selected triangles.
-- A preview sampling test that guarantees every selected non-empty object stays
-  represented when display sampling is required.
+- Complete selected drawable geometry with no display-only triangle removal.
 
 ## Preserved from v8
 
@@ -47,6 +57,6 @@ preserves its OpenFlight and ModelConverterX compatibility path.
   texture resolution/downscaling, preflight diagnostics, and package reports.
 - Browser-only processing and GitHub Pages deployment.
 
-The 3D preview never feeds modified data back into conversion. Camera state,
-texture decoding, and preview-only triangle sampling are isolated from the
-stationary/material-safe export pipeline.
+The 3D preview never feeds modified data back into conversion. Camera state and
+texture decoding remain isolated from the stationary/material-safe export
+pipeline.

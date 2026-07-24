@@ -79,4 +79,12 @@ describe("geometry optimizer", () => {
     const models = [grid("a.obj", 20, 20), grid("b.obj", 20, 20)];
     expect(estimateOptimizedTriangles(models, { ...options, targetTriangles: 100 })).toBe(600);
   });
+
+  it("removes OBJ8 draw-disabled ranges from converted geometry", () => {
+    const source = grid("aircraft.obj", 4, 4);
+    source.triangles[0].drawEnabled = false;
+    const result = optimizeModels([source], { ...options, preset: "original" });
+    expect(result.models[0].triangles).toHaveLength(source.triangles.length - 1);
+    expect(result.models[0].triangles.every((triangle) => triangle.drawEnabled !== false)).toBe(true);
+  });
 });

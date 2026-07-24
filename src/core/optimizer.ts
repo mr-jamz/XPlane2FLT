@@ -16,7 +16,7 @@ function vertexKey(vertex: Obj8Vertex): string {
 function materialKey(triangle: Obj8Triangle): string {
   const material = triangle.material;
   return material
-    ? [...material.diffuse, ...material.emissive, material.shininess, material.alpha, material.blended ? 1 : 0].join("|")
+    ? [...material.diffuse, ...material.emissive, material.shininess, material.alpha, material.blended ? 1 : 0, material.alphaCutoff ?? 0.5].join("|")
     : "default";
 }
 
@@ -85,6 +85,9 @@ function clean(model: Obj8Model, options: GeometryOptimizationOptions): Obj8Mode
   const seen = new Set<string>();
   const triangles: Obj8Triangle[] = [];
   for (const source of model.triangles) {
+    // OBJ8 draw-disable ranges are helper/hidden geometry and must not enter
+    // either the preview or the final OpenFlight package.
+    if (source.drawEnabled === false) continue;
     const indices = source.indices.map((index) => remap[index]) as [number, number, number];
     const [a, b, c] = indices;
     if (options.removeDegenerateFaces && (
@@ -194,8 +197,11 @@ export function validateStationaryGeometry(sourceModels: Obj8Model[], outputMode
       diagnostics.push({ severity: "error", code: "OPT_PART_ORDER_CHANGED", file: source.path, message: "Optimization changed the per-object model mapping." });
       return;
     }
-    const sourceVertices = new Set(source.vertices.map(vertexKey));
-    const sourceTriangles = new Set(source.triangles.map((triangle) => (
+    const drawableSourceTriangles = source.triangles.filter((triangle) => triangle.drawEnabled !== false);
+    const drawableSourceIndices = new Set(drawableSourceTriangles.flatMap((triangle) => triangle.indices));
+    const drawableSourceVertices = [...drawableSourceIndices].map((index) => source.vertices[index]);
+    const sourceVertices = new Set(drawableSourceVertices.map(vertexKey));
+    const sourceTriangles = new Set(drawableSourceTriangles.map((triangle) => (
       `${triangle.indices.map((index) => vertexKey(source.vertices[index])).join(">")}|${triangleStateKey(triangle)}`
     )));
     if (output.vertices.some((vertex) => !sourceVertices.has(vertexKey(vertex)))) {
@@ -212,8 +218,8 @@ export function validateStationaryGeometry(sourceModels: Obj8Model[], outputMode
         break;
       }
     }
-    if (output.vertices.length > 0) {
-      const before = bounds(source.vertices);
+    if (output.vertices.length > 0 && drawableSourceVertices.length > 0) {
+      const before = bounds(drawableSourceVertices);
       const after = bounds(output.vertices);
       if ([0, 1, 2].some((axis) => before.min[axis] !== after.min[axis] || before.max[axis] !== after.max[axis])) {
         diagnostics.push({ severity: "error", code: "OPT_BOUNDS_SHIFTED", file: source.path, message: "Optimization changed the authored bounds or placement of this object." });

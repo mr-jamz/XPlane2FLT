@@ -24,15 +24,36 @@ describe("parseObj8", () => {
     expect(model.triangles).toEqual([{
       indices: [0, 1, 2],
       doubleSided: true,
+      drawEnabled: true,
       material: {
         diffuse: [1, 1, 1],
         emissive: [0, 0, 0],
         shininess: 0,
         alpha: 1,
-        blended: true,
+        blended: false,
+        alphaCutoff: 0.5,
       },
     }]);
     expect(model.diagnostics).toEqual([]);
+  });
+
+  it("applies draw and blend state at each TRIS command", () => {
+    const model = parseObj8("state.obj", `I
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 1 0 0 1 0 0 1
+IDX 0 1 2
+ATTR_draw_disable
+TRIS 0 3
+ATTR_draw_enable
+ATTR_blend
+TRIS 0 3`);
+    expect(model.triangles[0].drawEnabled).toBe(false);
+    expect(model.triangles[0].material?.blended).toBe(false);
+    expect(model.triangles[1].drawEnabled).toBe(true);
+    expect(model.triangles[1].material?.blended).toBe(true);
   });
 
   it("reports malformed triangle references without crashing", () => {

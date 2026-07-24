@@ -14,12 +14,13 @@ function model(path: string, triangleCount: number): Obj8Model {
     triangles: Array.from({ length: triangleCount }, () => ({
       indices: [0, 1, 2] as [number, number, number],
       doubleSided: false,
+      drawEnabled: true,
     })),
     diagnostics: [],
   };
 }
 
-describe("OBJ8 preview sampling", () => {
+describe("OBJ8 preview geometry", () => {
   it("converts OBJ8 winding for Three.js without mutating source indices", () => {
     const source: [number, number, number] = [4, 7, 9];
     expect(previewTriangleIndices(source)).toEqual([4, 9, 7]);
@@ -33,12 +34,11 @@ describe("OBJ8 preview sampling", () => {
     expect(selected.get("rotor.obj")).toHaveLength(6);
   });
 
-  it("keeps every non-empty object represented in a very large selection", () => {
+  it("renders every drawable triangle in a very large selection without making holes", () => {
     const models = [model("body.obj", 500_000), model("rotor.obj", 10), model("gear.obj", 25)];
     const selected = selectTriangleIndices(models);
-    expect([...selected.values()].reduce((sum, indices) => sum + indices.length, 0)).toBeLessThanOrEqual(350_000);
-    expect(selected.get("body.obj")!.length).toBeGreaterThan(0);
-    expect(selected.get("rotor.obj")!.length).toBeGreaterThan(0);
-    expect(selected.get("gear.obj")!.length).toBeGreaterThan(0);
+    expect(selected.get("body.obj")).toHaveLength(500_000);
+    expect(selected.get("rotor.obj")).toHaveLength(10);
+    expect(selected.get("gear.obj")).toHaveLength(25);
   });
 });

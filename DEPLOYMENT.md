@@ -1,4 +1,4 @@
-# Deploy the corrected v9 from a separate GitHub branch
+# Deploy the corrected v9.3 from a separate GitHub branch
 
 Recommended branch name: `preview-v9-obj8-render`
 
@@ -19,7 +19,7 @@ test branch temporarily becomes the live Pages version until another configured
 branch is deployed.
 
 If an earlier v9 commit is already on this branch, replace its files with this
-corrected package and commit again. The workflow will redeploy the rebuilt v9.
+corrected v9.3 package and commit again. The workflow will redeploy it.
 
 ## Git command method
 

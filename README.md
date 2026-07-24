@@ -23,7 +23,9 @@ A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry 
 - Shows original-versus-optimized triangle and estimated FLT sizes before conversion.
 - Renders the currently selected OBJ8 files in an interactive, texture-aware 3D preview before conversion.
 - Lets you orbit, zoom, pan, frame the selected package, inspect a clicked part, and remove it from the package directly from the viewport.
-- Uses adaptive preview-only triangle sampling for very large aircraft; conversion always uses the requested source/optimized geometry settings.
+- Renders every selected drawable source triangle so the preview never creates
+  artificial holes by omitting fuselage faces.
+- Interprets per-command draw, blend, alpha-cutoff, and culling state.
 - Validates the generated record stream before enabling download.
 - Exports a texture-complete ZIP containing the `.flt`, textures, and a JSON conversion report.
 
@@ -97,4 +99,4 @@ are carried into ModelConverterX-compatible OpenFlight Face, Vertex Palette,
 Vertex List, Texture Palette, and Material Palette records. Conversion is
 blocked if any optimized face cannot be proven to be an intact source triangle.
 The OBJ8 viewport is an independent read-only visualization path: changing the
-camera or preview sampling never mutates the geometry supplied to the converter.
+camera interaction never mutates the geometry supplied to the converter.
