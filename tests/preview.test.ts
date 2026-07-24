@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectTriangleIndices } from "../src/Obj8Preview";
+import { previewTriangleIndices, selectTriangleIndices } from "../src/Obj8Preview";
 import type { Obj8Model } from "../src/core/types";
 
 function model(path: string, triangleCount: number): Obj8Model {
@@ -20,6 +20,12 @@ function model(path: string, triangleCount: number): Obj8Model {
 }
 
 describe("OBJ8 preview sampling", () => {
+  it("converts OBJ8 winding for Three.js without mutating source indices", () => {
+    const source: [number, number, number] = [4, 7, 9];
+    expect(previewTriangleIndices(source)).toEqual([4, 9, 7]);
+    expect(source).toEqual([4, 7, 9]);
+  });
+
   it("shows every source triangle when the selection is within budget", () => {
     const models = [model("body.obj", 12), model("rotor.obj", 6)];
     const selected = selectTriangleIndices(models);

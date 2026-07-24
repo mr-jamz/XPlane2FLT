@@ -93,6 +93,15 @@ export function selectTriangleIndices(models: Obj8Model[]): Map<string, number[]
   return result;
 }
 
+/**
+ * OBJ8 front faces use the opposite winding convention from Three.js.
+ * Convert only at the preview boundary so the parsed/export geometry remains
+ * unchanged and the exterior side is visible with FrontSide culling enabled.
+ */
+export function previewTriangleIndices(indices: [number, number, number]): [number, number, number] {
+  return [indices[0], indices[2], indices[1]];
+}
+
 function makeGeometry(model: Obj8Model, triangleIndices: number[]): Map<string, THREE.BufferGeometry> {
   const batches = new Map<string, { positions: number[]; normals: number[]; uvs: number[] }>();
   for (const triangleIndex of triangleIndices) {
@@ -100,7 +109,7 @@ function makeGeometry(model: Obj8Model, triangleIndices: number[]): Map<string, 
     if (!triangle) continue;
     const key = materialKey(triangle.material, triangle.doubleSided);
     const batch = batches.get(key) ?? { positions: [], normals: [], uvs: [] };
-    for (const index of triangle.indices) {
+    for (const index of previewTriangleIndices(triangle.indices)) {
       const vertex = model.vertices[index];
       if (!vertex) continue;
       batch.positions.push(...vertex.position);

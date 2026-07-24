@@ -1,8 +1,8 @@
 # XPlane2FLT
 
-Version 9.1 rebuild: stationary/material-safe OpenFlight conversion, corrected
+Version 9.2 rebuild: stationary/material-safe OpenFlight conversion, corrected
 ModelConverterX face winding and culling, plus an interactive selected-OBJ8
-preview.
+preview with corrected exterior-facing OBJ8 rendering.
 
 A local-first browser converter for packaging X-Plane 12 OBJ8 aircraft geometry as a binary OpenFlight 16.0 (`.flt`) database with its texture files intact.
 

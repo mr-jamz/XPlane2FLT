@@ -169,10 +169,10 @@ function transformVertex(vertex: Obj8Vertex, coordinateMode: BuildInput["coordin
 }
 
 /**
- * X-Plane OBJ8 and OpenFlight/ModelConverterX use opposite front-face winding
- * conventions after the OBJ8 coordinate frame is converted to Z-up. Keep the
- * source indices untouched everywhere else and reverse them exactly once at
- * the OpenFlight vertex-list boundary.
+ * OBJ8 and OpenFlight/ModelConverterX use opposite front-face winding
+ * conventions. The Z-up transform itself is a proper rotation (determinant
+ * +1), so this is a format-boundary conversion rather than a handedness fix.
+ * Keep source indices untouched everywhere else and reverse exactly once here.
  */
 export function openFlightTriangleIndices(
   triangle: Obj8Triangle,

@@ -1,5 +1,13 @@
 # XPlane2FLT v9 — Selected OBJ8 3D Preview
 
+## v9.2 preview orientation correction
+
+- Converts OBJ8 triangle winding at the Three.js preview boundary so ordinary
+  single-sided aircraft surfaces render from the exterior.
+- Keeps `ATTR_no_cull` surfaces double-sided.
+- Does not mutate parsed geometry or change the already-verified OpenFlight
+  export winding.
+
 This release is based on the verified v8 stationary/material-safe converter and
 preserves its OpenFlight and ModelConverterX compatibility path.
 
