@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { Obj8Preview } from "./Obj8Preview";
 import { convertArchive, inspectArchive } from "./core/archive";
 import { downloadBytes } from "./core/download";
 import { estimateOptimizedTriangles } from "./core/optimizer";
@@ -250,6 +251,14 @@ function App() {
                     </table>
                   </div>
                 </section>
+
+                {sourceFile && (
+                  <Obj8Preview
+                    sourceFile={sourceFile}
+                    models={selectedModels}
+                    onToggleModel={toggleModel}
+                  />
+                )}
 
                 {warnings.length > 0 && (
                   <section className="panel">

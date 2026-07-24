@@ -168,6 +168,20 @@ function transformVertex(vertex: Obj8Vertex, coordinateMode: BuildInput["coordin
   };
 }
 
+/**
+ * X-Plane OBJ8 and OpenFlight/ModelConverterX use opposite front-face winding
+ * conventions after the OBJ8 coordinate frame is converted to Z-up. Keep the
+ * source indices untouched everywhere else and reverse them exactly once at
+ * the OpenFlight vertex-list boundary.
+ */
+export function openFlightTriangleIndices(
+  triangle: Obj8Triangle,
+  coordinateMode: BuildInput["coordinateMode"],
+): [number, number, number] {
+  const [a, b, c] = triangle.indices;
+  return coordinateMode === "openflight-z-up" ? [a, c, b] : [a, b, c];
+}
+
 function writeVertexPalette(writer: BigEndianWriter, models: Obj8Model[], coordinateMode: BuildInput["coordinateMode"], vertexCount: number): void {
   recordHeader(writer, 67, VERTEX_PALETTE_HEADER_LENGTH);
   writer.int32(VERTEX_PALETTE_HEADER_LENGTH + vertexCount * VERTEX_RECORD_LENGTH);
@@ -288,10 +302,11 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
       writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, materialIndex, triangle);
       push(writer);
       const base = modelVertexBaseOffsets[objectIndex];
+      const indices = openFlightTriangleIndices(triangle, input.coordinateMode);
       writeVertexList(writer, [
-        base + triangle.indices[0] * VERTEX_RECORD_LENGTH,
-        base + triangle.indices[1] * VERTEX_RECORD_LENGTH,
-        base + triangle.indices[2] * VERTEX_RECORD_LENGTH,
+        base + indices[0] * VERTEX_RECORD_LENGTH,
+        base + indices[1] * VERTEX_RECORD_LENGTH,
+        base + indices[2] * VERTEX_RECORD_LENGTH,
       ]);
       pop(writer);
       faceNumber += 1;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOpenFlight, validateOpenFlight } from "../src/core/openflight";
+import { buildOpenFlight, openFlightTriangleIndices, validateOpenFlight } from "../src/core/openflight";
 import { parseObj8 } from "../src/core/obj8";
 
 function recordOpcodes(bytes: Uint8Array): number[] {
@@ -16,6 +16,54 @@ function recordOpcodes(bytes: Uint8Array): number[] {
 }
 
 describe("OpenFlight writer", () => {
+  it("reverses winding exactly once for Z-up OpenFlight output", () => {
+    const triangle = {
+      indices: [4, 7, 9] as [number, number, number],
+      doubleSided: false,
+    };
+    expect(openFlightTriangleIndices(triangle, "openflight-z-up")).toEqual([4, 9, 7]);
+    expect(openFlightTriangleIndices(triangle, "keep-xplane")).toEqual([4, 7, 9]);
+    expect(triangle.indices).toEqual([4, 7, 9]);
+  });
+
+  it("writes reversed Z-up vertex references and transformed normals without moving positions", () => {
+    const model = parseObj8(
+      "objects/body.obj",
+      `I\n800\nOBJ\nVT 2 3 5 0 1 0 0 0\nVT 7 11 13 0 1 0 1 0\nVT 17 19 23 0 1 0 0 1\nIDX 0 1 2\nTRIS 0 3`,
+    );
+    const bytes = buildOpenFlight({ models: [model], textures: [], coordinateMode: "openflight-z-up" });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 0;
+    let paletteOffset = -1;
+    let vertexListOffset = -1;
+    while (offset < bytes.byteLength) {
+      const opcode = view.getUint16(offset, false);
+      if (opcode === 67) {
+        paletteOffset = offset;
+        offset += view.getInt32(offset + 4, false);
+        continue;
+      }
+      if (opcode === 72) vertexListOffset = offset;
+      offset += view.getUint16(offset + 2, false);
+    }
+    expect(paletteOffset).toBeGreaterThan(0);
+    expect(vertexListOffset).toBeGreaterThan(0);
+    const firstVertex = paletteOffset + 8;
+    expect([
+      view.getFloat64(firstVertex + 8, false),
+      view.getFloat64(firstVertex + 16, false),
+      view.getFloat64(firstVertex + 24, false),
+    ]).toEqual([2, -5, 3]);
+    expect(view.getFloat32(firstVertex + 32, false)).toBeCloseTo(0);
+    expect(view.getFloat32(firstVertex + 36, false)).toBeCloseTo(0);
+    expect(view.getFloat32(firstVertex + 40, false)).toBeCloseTo(1);
+    expect([
+      view.getInt32(vertexListOffset + 4, false),
+      view.getInt32(vertexListOffset + 8, false),
+      view.getInt32(vertexListOffset + 12, false),
+    ]).toEqual([8, 8 + 2 * 64, 8 + 1 * 64]);
+  });
+
   it("writes ModelConverterX-compatible face records with textured geometry", () => {
     const model = parseObj8(
       "objects/body.obj",

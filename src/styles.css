@@ -114,6 +114,54 @@ tr.is-selected td { background: rgba(169, 240, 77, .025); }
 .model-check:checked { background: var(--accent); box-shadow: inset 0 0 0 4px #08120f; }
 .muted { color: #596c66 !important; }
 
+.preview-panel { overflow: hidden; }
+.preview-panel__heading { min-height: 76px; }
+.preview-stage {
+  position: relative;
+  width: 100%;
+  height: min(58vw, 620px);
+  min-height: 420px;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(47, 91, 78, .18), transparent 46%),
+    #07110f;
+  cursor: grab;
+  touch-action: none;
+}
+.preview-stage:active { cursor: grabbing; }
+.preview-stage canvas { display: block; width: 100% !important; height: 100% !important; }
+.preview-toolbar,
+.preview-selection {
+  min-height: 42px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  color: #758983;
+  background: #08120f;
+  font: 500 9px "DM Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.preview-selection {
+  border-top-color: #29443a;
+  color: #a9bdb6;
+  background: rgba(28, 69, 47, .18);
+  text-transform: none;
+}
+.preview-selection strong { color: var(--accent); }
+.preview-selection button {
+  border: 1px solid #38554b;
+  background: transparent;
+  color: #b8cbc4;
+  padding: 7px 10px;
+  cursor: pointer;
+  font: inherit;
+  text-transform: uppercase;
+}
+.preview-selection button:hover { border-color: var(--accent); color: var(--accent); }
+
 .diagnostics { list-style: none; margin: 0; padding: 4px 18px; max-height: 300px; overflow: auto; }
 .diagnostic { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 14px 0; border-bottom: 1px solid #1a2925; }
 .diagnostic:last-child { border: 0; }
@@ -200,6 +248,8 @@ footer a:hover { color: var(--accent); }
   .results-main, .export-card { padding: 14px; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .panel__heading { align-items: flex-start; }
+  .preview-stage { height: 430px; min-height: 430px; }
+  .preview-toolbar, .preview-selection { align-items: flex-start; flex-direction: column; }
   .privacy-strip { padding-top: 30px; }
   footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 7px; }
 }
