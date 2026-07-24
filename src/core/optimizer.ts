@@ -1,25 +1,50 @@
-import type { GeometryOptimizationOptions, Obj8Model, Obj8Triangle, Obj8Vertex, OptimizationStats } from "./types";
+import type {
+  Diagnostic,
+  GeometryOptimizationOptions,
+  Obj8Model,
+  Obj8Triangle,
+  Obj8Vertex,
+  OptimizationStats,
+} from "./types";
 
 const PRESET_TARGETS = { original: Number.MAX_SAFE_INTEGER, balanced: 120_000, performance: 65_000, aggressive: 35_000 } as const;
 
+function vertexKey(vertex: Obj8Vertex): string {
+  return [...vertex.position, ...vertex.normal, ...vertex.uv].map((value) => Object.is(value, -0) ? "0" : String(value)).join("|");
+}
+
+function materialKey(triangle: Obj8Triangle): string {
+  const material = triangle.material;
+  return material
+    ? [...material.diffuse, ...material.emissive, material.shininess, material.alpha, material.blended ? 1 : 0].join("|")
+    : "default";
+}
+
+function triangleStateKey(triangle: Obj8Triangle): string {
+  return `${triangle.doubleSided ? 1 : 0}|${materialKey(triangle)}`;
+}
+
 function areaSquared(a: Obj8Vertex, b: Obj8Vertex, c: Obj8Vertex): number {
-  const ab = b.position.map((v, i) => v - a.position[i]);
-  const ac = c.position.map((v, i) => v - a.position[i]);
-  const cross = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
+  const ab = b.position.map((value, axis) => value - a.position[axis]);
+  const ac = c.position.map((value, axis) => value - a.position[axis]);
+  const cross = [
+    ab[1] * ac[2] - ab[2] * ac[1],
+    ab[2] * ac[0] - ab[0] * ac[2],
+    ab[0] * ac[1] - ab[1] * ac[0],
+  ];
   return cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2;
 }
 
-function getBounds(vertices: Obj8Vertex[]) {
+function bounds(vertices: Obj8Vertex[]) {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-  for (const vertex of vertices) for (let axis = 0; axis < 3; axis += 1) {
-    min[axis] = Math.min(min[axis], vertex.position[axis]);
-    max[axis] = Math.max(max[axis], vertex.position[axis]);
+  for (const vertex of vertices) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      min[axis] = Math.min(min[axis], vertex.position[axis]);
+      max[axis] = Math.max(max[axis], vertex.position[axis]);
+    }
   }
-  const size: [number, number, number] = [
-    Math.max(1e-9, max[0] - min[0]), Math.max(1e-9, max[1] - min[1]), Math.max(1e-9, max[2] - min[2]),
-  ];
-  return { min, size, diagonalSquared: size[0] ** 2 + size[1] ** 2 + size[2] ** 2 };
+  return { min, max };
 }
 
 function compact(model: Obj8Model, triangles: Obj8Triangle[], vertices = model.vertices): Obj8Model {
@@ -40,125 +65,92 @@ function compact(model: Obj8Model, triangles: Obj8Triangle[], vertices = model.v
 function clean(model: Obj8Model, options: GeometryOptimizationOptions): Obj8Model {
   let vertices = model.vertices;
   let remap = vertices.map((_, index) => index);
-  if (options.weldVertices && vertices.length) {
-    const step = Math.sqrt(getBounds(vertices).diagonalSquared) * 1e-7 || 1e-7;
+  if (options.weldVertices) {
     const byKey = new Map<string, number>();
     const welded: Obj8Vertex[] = [];
     remap = vertices.map((vertex) => {
-      const key = [
-        ...vertex.position.map((v) => Math.round(v / step)),
-        ...vertex.normal.map((v) => Math.round(v * 10_000)),
-        ...vertex.uv.map((v) => Math.round(v * 1_000_000)),
-      ].join(",");
-      let index = byKey.get(key);
-      if (index === undefined) {
-        index = welded.length;
-        byKey.set(key, index);
-        welded.push(vertex);
-      }
+      // Exact full-attribute welding only. Positions with different UVs or
+      // normals remain separate, and near-but-distinct coordinates never move.
+      const key = vertexKey(vertex);
+      const existing = byKey.get(key);
+      if (existing !== undefined) return existing;
+      const index = welded.length;
+      byKey.set(key, index);
+      welded.push(vertex);
       return index;
     });
     vertices = welded;
   }
-  const minimumArea = getBounds(vertices).diagonalSquared ** 2 * 1e-14;
-  const seen = new Set<string>();
-  const triangles: Obj8Triangle[] = [];
-  for (const source of model.triangles) {
-    const triangle = { ...source, indices: source.indices.map((index) => remap[index]) as [number, number, number] };
-    const [a, b, c] = triangle.indices;
-    if (options.removeDegenerateFaces && (a === b || b === c || a === c || areaSquared(vertices[a], vertices[b], vertices[c]) <= minimumArea)) continue;
-    if (options.removeDuplicateFaces) {
-      const key = `${[...triangle.indices].sort((left, right) => left - right).join(",")}:${triangle.doubleSided ? 1 : 0}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-    }
-    triangles.push(triangle);
-  }
-  return compact(model, triangles, vertices);
-}
 
-function cluster(model: Obj8Model, divisions: number, preserveThinParts: boolean): Obj8Model {
-  if (!model.vertices.length) return model;
-  const box = getBounds(model.vertices);
-  const longest = Math.max(...box.size);
-  const axisDivisions = box.size.map((size) => preserveThinParts ? divisions : Math.max(1, Math.round(divisions * size / longest)));
-  const positionUse = new Map<string, string>();
-  const seamPositions = new Set<string>();
-  for (const vertex of model.vertices) {
-    const positionKey = vertex.position.map((value) => value.toPrecision(10)).join(",");
-    const uvKey = vertex.uv.map((value) => Math.round(value * 2048)).join(",");
-    const previous = positionUse.get(positionKey);
-    if (previous !== undefined && previous !== uvKey) seamPositions.add(positionKey);
-    else positionUse.set(positionKey, uvKey);
-  }
-  type Cluster = { members: number[]; positionSum: [number, number, number] };
-  const clusters: Cluster[] = [];
-  const byKey = new Map<string, number>();
-  const remap: number[] = [];
-  for (const vertex of model.vertices) {
-    const cell = vertex.position.map((value, axis) => Math.min(
-      axisDivisions[axis] - 1,
-      Math.max(0, Math.floor(((value - box.min[axis]) / box.size[axis]) * axisDivisions[axis])),
-    ));
-    const normalBin = vertex.normal.map((value) => Math.round(value));
-    const positionKey = vertex.position.map((value) => value.toPrecision(10)).join(",");
-    const seamKey = seamPositions.has(positionKey) ? vertex.uv.map((value) => Math.round(value * 2048)).join(",") : "";
-    const key = `${cell.join(",")}|${normalBin.join(",")}|${seamKey}`;
-    let index = byKey.get(key);
-    if (index === undefined) {
-      index = clusters.length;
-      byKey.set(key, index);
-      clusters.push({ members: [], positionSum: [0, 0, 0] });
-    }
-    const target = clusters[index];
-    target.members.push(remap.length);
-    for (let axis = 0; axis < 3; axis += 1) {
-      target.positionSum[axis] += vertex.position[axis];
-    }
-    remap.push(index);
-  }
-  // A representative must be an actual authored OBJ vertex. Averaging positions
-  // can shift thin/disconnected parts and invent coordinates that never existed.
-  const vertices: Obj8Vertex[] = clusters.map((item) => {
-    const centroid = item.positionSum.map((value) => value / item.members.length);
-    let representative = item.members[0];
-    let nearestDistance = Infinity;
-    for (const sourceIndex of item.members) {
-      const position = model.vertices[sourceIndex].position;
-      const distance = position.reduce((sum, value, axis) => sum + (value - centroid[axis]) ** 2, 0);
-      if (distance < nearestDistance) {
-        representative = sourceIndex;
-        nearestDistance = distance;
-      }
-    }
-    return model.vertices[representative];
-  });
   const seen = new Set<string>();
   const triangles: Obj8Triangle[] = [];
   for (const source of model.triangles) {
     const indices = source.indices.map((index) => remap[index]) as [number, number, number];
-    if (indices[0] === indices[1] || indices[1] === indices[2] || indices[0] === indices[2]) continue;
-    const key = `${[...indices].sort((a, b) => a - b).join(",")}:${source.doubleSided ? 1 : 0}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const [a, b, c] = indices;
+    if (options.removeDegenerateFaces && (
+      a === b || b === c || a === c || areaSquared(vertices[a], vertices[b], vertices[c]) <= Number.EPSILON
+    )) continue;
+    if (options.removeDuplicateFaces) {
+      const key = `${[...indices].sort((left, right) => left - right).join(",")}|${triangleStateKey(source)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
     triangles.push({ ...source, indices });
   }
   return compact(model, triangles, vertices);
 }
 
-function simplify(model: Obj8Model, target: number, preserveThinParts: boolean): Obj8Model {
+function selectWholeTriangles(model: Obj8Model, target: number, preserveThinParts: boolean): Obj8Model {
   if (model.triangles.length <= target || target < 4) return model;
-  let low = 1; let high = 512; let best = model; let bestDistance = Math.abs(model.triangles.length - target);
-  for (let iteration = 0; iteration < 11 && low <= high; iteration += 1) {
-    const divisions = Math.floor((low + high) / 2);
-    const candidate = cluster(model, divisions, preserveThinParts);
-    const distance = Math.abs(candidate.triangles.length - target);
-    if (distance < bestDistance || (distance === bestDistance && candidate.triangles.length > best.triangles.length)) {
-      best = candidate; bestDistance = distance;
+  const required = new Set<number>();
+
+  // Preserve triangles containing each positional extreme. This keeps the
+  // authored object bounds and coordinate frame exactly stationary.
+  const box = bounds(model.vertices);
+  for (let axis = 0; axis < 3; axis += 1) {
+    for (const extreme of [box.min[axis], box.max[axis]]) {
+      const triangleIndex = model.triangles.findIndex((triangle) => triangle.indices.some(
+        (index) => model.vertices[index].position[axis] === extreme,
+      ));
+      if (triangleIndex >= 0) required.add(triangleIndex);
     }
-    if (candidate.triangles.length > target) high = divisions - 1; else low = divisions + 1;
   }
-  return best;
+
+  if (preserveThinParts) {
+    // Retain the smallest-area authored faces as anchors for blades, probes,
+    // antennas, gear struts, and other thin geometry.
+    const thinCount = Math.min(Math.max(8, Math.floor(target * 0.04)), target);
+    model.triangles
+      .map((triangle, index) => ({
+        index,
+        area: areaSquared(
+          model.vertices[triangle.indices[0]],
+          model.vertices[triangle.indices[1]],
+          model.vertices[triangle.indices[2]],
+        ),
+      }))
+      .sort((left, right) => left.area - right.area || left.index - right.index)
+      .slice(0, thinCount)
+      .forEach(({ index }) => required.add(index));
+  }
+
+  const chosen = new Set([...required].slice(0, target));
+  const quota = target - chosen.size;
+  if (quota > 0) {
+    const available = model.triangles.length - chosen.size;
+    for (let slot = 0; slot < quota; slot += 1) {
+      let cursor = Math.min(model.triangles.length - 1, Math.floor((slot + 0.5) * available / quota));
+      let visited = 0;
+      while (chosen.has(cursor) && visited < model.triangles.length) {
+        cursor = (cursor + 1) % model.triangles.length;
+        visited += 1;
+      }
+      chosen.add(cursor);
+    }
+  }
+
+  const triangles = [...chosen].sort((left, right) => left - right).map((index) => model.triangles[index]);
+  return compact(model, triangles);
 }
 
 function allocations(models: Obj8Model[], totalTarget: number, minimumPerPart: number): number[] {
@@ -194,17 +186,59 @@ export function estimateOptimizedTriangles(models: Obj8Model[], options: Geometr
   return Math.max(minimum, resolveTargetTriangles(options, original));
 }
 
-export function optimizeModels(models: Obj8Model[], options: GeometryOptimizationOptions): { models: Obj8Model[]; stats: OptimizationStats } {
+export function validateStationaryGeometry(sourceModels: Obj8Model[], outputModels: Obj8Model[]): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  sourceModels.forEach((source, modelIndex) => {
+    const output = outputModels[modelIndex];
+    if (!output || output.path !== source.path) {
+      diagnostics.push({ severity: "error", code: "OPT_PART_ORDER_CHANGED", file: source.path, message: "Optimization changed the per-object model mapping." });
+      return;
+    }
+    const sourceVertices = new Set(source.vertices.map(vertexKey));
+    const sourceTriangles = new Set(source.triangles.map((triangle) => (
+      `${triangle.indices.map((index) => vertexKey(source.vertices[index])).join(">")}|${triangleStateKey(triangle)}`
+    )));
+    if (output.vertices.some((vertex) => !sourceVertices.has(vertexKey(vertex)))) {
+      diagnostics.push({ severity: "error", code: "OPT_VERTEX_MOVED", file: source.path, message: "Optimization created or moved a vertex instead of preserving an authored coordinate and its UV/normal attributes." });
+    }
+    for (const triangle of output.triangles) {
+      if (triangle.indices.some((index) => !Number.isInteger(index) || index < 0 || index >= output.vertices.length)) {
+        diagnostics.push({ severity: "error", code: "OPT_INDEX_OUT_OF_RANGE", file: source.path, message: "An optimized triangle references a vertex outside its own object." });
+        break;
+      }
+      const key = `${triangle.indices.map((index) => vertexKey(output.vertices[index])).join(">")}|${triangleStateKey(triangle)}`;
+      if (!sourceTriangles.has(key)) {
+        diagnostics.push({ severity: "error", code: "OPT_TRIANGLE_REMAPPED", file: source.path, message: "Optimization changed a triangle-to-vertex or material relationship." });
+        break;
+      }
+    }
+    if (output.vertices.length > 0) {
+      const before = bounds(source.vertices);
+      const after = bounds(output.vertices);
+      if ([0, 1, 2].some((axis) => before.min[axis] !== after.min[axis] || before.max[axis] !== after.max[axis])) {
+        diagnostics.push({ severity: "error", code: "OPT_BOUNDS_SHIFTED", file: source.path, message: "Optimization changed the authored bounds or placement of this object." });
+      }
+    }
+  });
+  return diagnostics;
+}
+
+export function optimizeModels(models: Obj8Model[], options: GeometryOptimizationOptions): { models: Obj8Model[]; stats: OptimizationStats; diagnostics: Diagnostic[] } {
   const originalTriangles = models.reduce((sum, model) => sum + model.triangles.length, 0);
   const originalVertices = models.reduce((sum, model) => sum + model.vertices.length, 0);
   const cleaned = models.map((model) => clean(model, options));
   const cleanedTriangles = cleaned.reduce((sum, model) => sum + model.triangles.length, 0);
   const targets = allocations(cleaned, resolveTargetTriangles(options, cleanedTriangles), options.minTrianglesPerPart);
-  const optimized = options.preset === "original" ? cleaned : cleaned.map((model, index) => simplify(model, targets[index], options.preserveThinParts));
+  const optimized = options.preset === "original"
+    ? cleaned
+    : cleaned.map((model, index) => selectWholeTriangles(model, targets[index], options.preserveThinParts));
+  const diagnostics = validateStationaryGeometry(models, optimized);
   return {
     models: optimized,
+    diagnostics,
     stats: {
-      originalTriangles, cleanedTriangles,
+      originalTriangles,
+      cleanedTriangles,
       optimizedTriangles: optimized.reduce((sum, model) => sum + model.triangles.length, 0),
       originalVertices,
       optimizedVertices: optimized.reduce((sum, model) => sum + model.vertices.length, 0),

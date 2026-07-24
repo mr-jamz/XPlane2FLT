@@ -36,12 +36,43 @@ describe("OpenFlight writer", () => {
     expect(validateOpenFlight(bytes)).toEqual([]);
     const opcodes = recordOpcodes(bytes);
     expect(opcodes).toEqual(expect.arrayContaining([1, 64, 67, 2, 4, 5, 70, 72]));
+    expect(opcodes).toContain(113);
     expect(opcodes).not.toContain(84);
     expect(opcodes).not.toContain(85);
     expect(opcodes).not.toContain(86);
     expect(opcodes.indexOf(10)).toBeLessThan(opcodes.indexOf(2));
     expect(opcodes.filter((opcode) => opcode === 10)).toHaveLength(4);
     expect(opcodes.filter((opcode) => opcode === 11)).toHaveLength(4);
+  });
+
+  it("writes a white texture-modulating material and preserves X-Plane surface state", () => {
+    const model = parseObj8(
+      "objects/body.obj",
+      `I\n800\nOBJ\nTEXTURE body.png\nATTR_diffuse_rgb 1 1 1\nATTR_shiny_rat 0.5\nATTR_no_cull\nVT 0 0 0 0 1 0 0 0\nVT 1 0 0 0 1 0 1 0\nVT 0 1 0 0 1 0 0 1\nIDX 0 1 2\nTRIS 0 3`,
+    );
+    model.texturePath = "objects/body.png";
+    const bytes = buildOpenFlight({
+      models: [model],
+      textures: [{ sourcePath: "objects/body.png", outputPath: "textures/body.png", index: 0 }],
+      coordinateMode: "keep-xplane",
+    });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 0;
+    let materialOffset = -1;
+    let faceOffset = -1;
+    while (offset < bytes.byteLength) {
+      const opcode = view.getUint16(offset, false);
+      if (opcode === 113) materialOffset = offset;
+      if (opcode === 5) faceOffset = offset;
+      const length = view.getUint16(offset + 2, false);
+      offset += opcode === 67 ? view.getInt32(offset + 4, false) : length;
+    }
+    expect(materialOffset).toBeGreaterThan(0);
+    expect(view.getFloat32(materialOffset + 72, false)).toBeCloseTo(64);
+    expect(view.getInt8(faceOffset + 18)).toBe(1);
+    expect(view.getInt16(faceOffset + 30, false)).toBe(0);
+    expect(view.getInt16(faceOffset + 28, false)).toBe(0);
+    expect(view.getUint32(faceOffset + 56, false)).toBe(0xffffffff);
   });
 
   it("writes large geometry through a single valid vertex palette", () => {

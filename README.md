@@ -80,3 +80,9 @@ The OpenFlight writer follows the [OGC OpenFlight Scene Description Database Spe
 ## License
 
 MIT
+Version 8 uses stationary, source-triangle simplification. It never creates
+replacement coordinates or reconnects vertices across parts. OBJ8 position,
+normal, UV, diffuse texture, culling, shininess, emissive color, and alpha state
+are carried into ModelConverterX-compatible OpenFlight Face, Vertex Palette,
+Vertex List, Texture Palette, and Material Palette records. Conversion is
+blocked if any optimized face cannot be proven to be an intact source triangle.

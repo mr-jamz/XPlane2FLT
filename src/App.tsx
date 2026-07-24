@@ -352,7 +352,7 @@ function App() {
 
                 <div className="export-note">
                   <span aria-hidden="true">✓</span>
-                  <p><strong>Textures stay external.</strong> OpenFlight references image files by path, so the ZIP package is the texture-complete deliverable.</p>
+                  <p><strong>Stationary geometry guard.</strong> Export stops if a face, coordinate, UV, normal, object bound, texture, or material relationship changes unexpectedly.</p>
                 </div>
 
                 <div className="export-summary">
@@ -386,7 +386,7 @@ function App() {
         <section className="privacy-strip">
           <div><span aria-hidden="true">⌁</span><p><strong>Local processing</strong><small>ZIP extraction, geometry conversion, validation, and packaging run in your browser.</small></p></div>
           <div><span aria-hidden="true">◇</span><p><strong>OpenFlight 16.0</strong><small>Big-endian binary records with vertex normals, UVs, faces, and texture palette references.</small></p></div>
-          <div><span aria-hidden="true">↗</span><p><strong>Honest diagnostics</strong><small>Unsupported X-Plane animation and placement behavior is reported before export.</small></p></div>
+          <div><span aria-hidden="true">↗</span><p><strong>MCX material-safe</strong><small>White texture modulation, material palettes, UV seams, transparency, culling, and surface state are preserved.</small></p></div>
         </section>
       </main>
 

@@ -16,6 +16,13 @@ export function parseObj8(path: string, source: string): Obj8Model {
   let litTexturePath: string | undefined;
   let normalTexturePath: string | undefined;
   let doubleSided = false;
+  let material = {
+    diffuse: [1, 1, 1] as [number, number, number],
+    emissive: [0, 0, 0] as [number, number, number],
+    shininess: 0,
+    alpha: 1,
+    blended: true,
+  };
   let animationDepth = 0;
   let animationWarningAdded = false;
   let lodWarningAdded = false;
@@ -46,6 +53,29 @@ export function parseObj8(path: string, source: string): Obj8Model {
     }
     if (command === "ATTR_CULL") {
       doubleSided = false;
+      continue;
+    }
+    if (command === "ATTR_DIFFUSE_RGB") {
+      const values = finiteNumbers(parts, 1, 3);
+      if (values) material = { ...material, diffuse: values as [number, number, number] };
+      continue;
+    }
+    if (command === "ATTR_EMISSION_RGB") {
+      const values = finiteNumbers(parts, 1, 3);
+      if (values) material = { ...material, emissive: values as [number, number, number] };
+      continue;
+    }
+    if (command === "ATTR_SHINY_RAT") {
+      const values = finiteNumbers(parts, 1, 1);
+      if (values) material = { ...material, shininess: Math.max(0, Math.min(128, values[0] * 128)) };
+      continue;
+    }
+    if (command === "ATTR_BLEND") {
+      material = { ...material, blended: true };
+      continue;
+    }
+    if (command === "ATTR_NO_BLEND") {
+      material = { ...material, blended: false };
       continue;
     }
     if (command === "ANIM_BEGIN") {
@@ -130,7 +160,15 @@ export function parseObj8(path: string, source: string): Obj8Model {
           });
           continue;
         }
-        triangles.push({ indices: [a, b, c], doubleSided });
+        triangles.push({
+          indices: [a, b, c],
+          doubleSided,
+          material: {
+            ...material,
+            diffuse: [...material.diffuse],
+            emissive: [...material.emissive],
+          },
+        });
       }
     }
   }
@@ -163,4 +201,3 @@ export function parseObj8(path: string, source: string): Obj8Model {
     diagnostics,
   };
 }
-

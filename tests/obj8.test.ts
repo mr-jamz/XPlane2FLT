@@ -21,7 +21,17 @@ describe("parseObj8", () => {
     expect(model.texturePath).toBe("fuselage.png");
     expect(model.litTexturePath).toBe("fuselage_LIT.png");
     expect(model.vertices).toHaveLength(3);
-    expect(model.triangles).toEqual([{ indices: [0, 1, 2], doubleSided: true }]);
+    expect(model.triangles).toEqual([{
+      indices: [0, 1, 2],
+      doubleSided: true,
+      material: {
+        diffuse: [1, 1, 1],
+        emissive: [0, 0, 0],
+        shininess: 0,
+        alpha: 1,
+        blended: true,
+      },
+    }]);
     expect(model.diagnostics).toEqual([]);
   });
 
@@ -31,4 +41,3 @@ describe("parseObj8", () => {
     expect(model.diagnostics.some((item) => item.code === "OBJ8_INDEX_OUT_OF_RANGE")).toBe(true);
   });
 });
-

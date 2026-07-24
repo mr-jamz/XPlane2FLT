@@ -226,6 +226,9 @@ export async function convertArchive(
     );
   }
   const optimized = optimizeModels(selectedModels, options.optimization);
+  if (optimized.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    throw new Error(optimized.diagnostics.map((diagnostic) => `${diagnostic.file ?? "Geometry"}: ${diagnostic.message}`).join(" "));
+  }
   const exportModels = optimized.models;
   const normalizedEntries = new Map<string, JSZipObject>();
   for (const [path, entry] of Object.entries(zip.files)) {
@@ -295,7 +298,7 @@ export async function convertArchive(
           diffuseTexture: model.texturePath ?? null,
         })),
         copiedTextures: textureReport,
-        diagnostics: inspection.diagnostics,
+        diagnostics: [...inspection.diagnostics, ...optimized.diagnostics],
       },
       null,
       2,
@@ -314,7 +317,7 @@ export async function convertArchive(
     packageZip,
     fltFileName,
     packageFileName,
-    diagnostics: [...inspection.diagnostics, ...validationDiagnostics],
+    diagnostics: [...inspection.diagnostics, ...optimized.diagnostics, ...validationDiagnostics],
     textureCount: selectedTextures.length,
     objectCount: exportModels.filter((model) => model.triangles.length > 0).length,
     triangleCount: optimized.stats.optimizedTriangles,

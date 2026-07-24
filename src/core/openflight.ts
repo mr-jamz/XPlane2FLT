@@ -1,4 +1,4 @@
-import type { Diagnostic, Obj8Model, Obj8Vertex } from "./types";
+import type { Diagnostic, Obj8MaterialState, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
 
 const HEADER_LENGTH = 324;
 const GROUP_LENGTH = 44;
@@ -7,6 +7,7 @@ const FACE_LENGTH = 80;
 const VERTEX_PALETTE_HEADER_LENGTH = 8;
 const VERTEX_RECORD_LENGTH = 64;
 const VERTEX_LIST_LENGTH = 16;
+const MATERIAL_PALETTE_LENGTH = 84;
 
 interface TextureBinding {
   sourcePath: string;
@@ -114,6 +115,50 @@ function writeTexturePalette(writer: BigEndianWriter, texture: TextureBinding): 
   writer.int32(Math.floor(texture.index / 16) * 64);
 }
 
+function normalizedMaterial(triangle: Obj8Triangle): Obj8MaterialState {
+  return triangle.material ?? {
+    diffuse: [1, 1, 1],
+    emissive: [0, 0, 0],
+    shininess: 0,
+    alpha: 1,
+    blended: true,
+  };
+}
+
+function materialKey(material: Obj8MaterialState): string {
+  return [...material.diffuse, ...material.emissive, material.shininess, material.alpha, material.blended ? 1 : 0].join("|");
+}
+
+function collectMaterials(models: Obj8Model[]): { materials: Obj8MaterialState[]; indices: Map<string, number> } {
+  const materials: Obj8MaterialState[] = [];
+  const indices = new Map<string, number>();
+  for (const model of models) for (const triangle of model.triangles) {
+    const material = normalizedMaterial(triangle);
+    const key = materialKey(material);
+    if (!indices.has(key)) {
+      indices.set(key, materials.length);
+      materials.push(material);
+    }
+  }
+  return { materials, indices };
+}
+
+function writeMaterialPalette(writer: BigEndianWriter, material: Obj8MaterialState, index: number): void {
+  recordHeader(writer, 113, MATERIAL_PALETTE_LENGTH);
+  writer.int32(index);
+  writer.ascii(`MAT${String(index).padStart(4, "0")}`, 12);
+  writer.uint32(0x80000000);
+  const ambient = material.diffuse.map((value) => Math.max(0, Math.min(1, value * 0.2)));
+  for (const value of ambient) writer.float32(value);
+  for (const value of material.diffuse) writer.float32(Math.max(0, Math.min(1, value)));
+  const specular = Math.max(0, Math.min(1, material.shininess / 128));
+  for (let axis = 0; axis < 3; axis += 1) writer.float32(specular);
+  for (const value of material.emissive) writer.float32(Math.max(0, Math.min(1, value)));
+  writer.float32(Math.max(0, Math.min(128, material.shininess)));
+  writer.float32(Math.max(0, Math.min(1, material.alpha)));
+  writer.uint32(0);
+}
+
 function transformVertex(vertex: Obj8Vertex, coordinateMode: BuildInput["coordinateMode"]): Obj8Vertex {
   if (coordinateMode === "keep-xplane") return vertex;
   return {
@@ -163,20 +208,21 @@ function writeObject(writer: BigEndianWriter, id: string): void {
   writer.int16(0); writer.int16(0); writer.int16(0); writer.int16(0);
 }
 
-function writeFace(writer: BigEndianWriter, id: string, textureIndex: number, doubleSided: boolean): void {
+function writeFace(writer: BigEndianWriter, id: string, textureIndex: number, materialIndex: number, triangle: Obj8Triangle): void {
+  const material = normalizedMaterial(triangle);
   const start = writer.length;
   recordHeader(writer, 5, FACE_LENGTH);
   writer.ascii(id, 8);
   writer.int32(0);
   writer.int16(0);
-  writer.int8(doubleSided ? 1 : 0);
+  writer.int8(triangle.doubleSided ? 1 : 0);
   writer.int8(textureIndex >= 0 ? 1 : 0);
   writer.uint16(0); writer.uint16(0); writer.int8(0); writer.int8(0);
   writer.int16(-1);
   writer.int16(textureIndex);
-  writer.int16(-1);
+  writer.int16(materialIndex);
   writer.int16(0); writer.int16(0); writer.int32(0);
-  writer.uint16(0); writer.uint8(0); writer.uint8(0);
+  writer.uint16(Math.round((1 - Math.max(0, Math.min(1, material.alpha))) * 65_535)); writer.uint8(0); writer.uint8(0);
   writer.uint32(0x10000000);
   writer.uint8(2);
   writer.zeros(7);
@@ -201,8 +247,9 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
   const vertexCount = input.models.reduce((sum, model) => sum + model.vertices.length, 0);
   const triangleCount = input.models.reduce((sum, model) => sum + model.triangles.length, 0);
   const populatedObjectCount = input.models.filter((model) => model.triangles.length > 0).length;
+  const materialPalette = collectMaterials(input.models);
   const vertexPaletteLength = VERTEX_PALETTE_HEADER_LENGTH + vertexCount * VERTEX_RECORD_LENGTH;
-  const outputSize = HEADER_LENGTH + input.textures.length * 216 + vertexPaletteLength
+  const outputSize = HEADER_LENGTH + input.textures.length * 216 + materialPalette.materials.length * MATERIAL_PALETTE_LENGTH + vertexPaletteLength
     + 4 + GROUP_LENGTH + 4
     + populatedObjectCount * (OBJECT_LENGTH + 4 + 4)
     + triangleCount * (FACE_LENGTH + 4 + VERTEX_LIST_LENGTH + 4)
@@ -220,6 +267,7 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
 
   writeHeader(writer, input.databaseId ?? "db", triangleCount, populatedObjectCount);
   for (const texture of input.textures) writeTexturePalette(writer, texture);
+  materialPalette.materials.forEach((material, index) => writeMaterialPalette(writer, material, index));
   writeVertexPalette(writer, input.models, input.coordinateMode, vertexCount);
 
   // The Header is a primary node. Its child level must be open before the
@@ -236,7 +284,8 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
     writeObject(writer, `OBJ${String(objectIndex + 1).padStart(4, "0")}`.slice(0, 7));
     push(writer);
     for (const triangle of model.triangles) {
-      writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, triangle.doubleSided);
+      const materialIndex = materialPalette.indices.get(materialKey(normalizedMaterial(triangle))) ?? -1;
+      writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, materialIndex, triangle);
       push(writer);
       const base = modelVertexBaseOffsets[objectIndex];
       writeVertexList(writer, [

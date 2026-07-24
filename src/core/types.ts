@@ -16,6 +16,15 @@ export interface Obj8Vertex {
 export interface Obj8Triangle {
   indices: [number, number, number];
   doubleSided: boolean;
+  material?: Obj8MaterialState;
+}
+
+export interface Obj8MaterialState {
+  diffuse: [number, number, number];
+  emissive: [number, number, number];
+  shininess: number;
+  alpha: number;
+  blended: boolean;
 }
 
 export interface Obj8Model {

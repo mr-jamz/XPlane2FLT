@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateOptimizedTriangles, optimizeModels } from "../src/core/optimizer";
+import { estimateOptimizedTriangles, optimizeModels, validateStationaryGeometry } from "../src/core/optimizer";
 import type { GeometryOptimizationOptions, Obj8Model } from "../src/core/types";
 
 function grid(path: string, width: number, height: number): Obj8Model {
@@ -50,6 +50,29 @@ describe("geometry optimizer", () => {
 
     expect(model.triangles.length).toBeLessThan(source.triangles.length);
     expect(model.vertices.every((vertex) => sourcePositions.has(vertex.position.join(",")))).toBe(true);
+    expect(validateStationaryGeometry([source], [model])).toEqual([]);
+  });
+
+  it("selects only intact source triangles with their original UVs and normals", () => {
+    const source = grid("aircraft.obj", 80, 50);
+    const result = optimizeModels([source], { ...options, targetTriangles: 600, minTrianglesPerPart: 4 });
+    expect(result.diagnostics).toEqual([]);
+    const sourceFaces = new Set(source.triangles.map((triangle) => triangle.indices
+      .map((index) => JSON.stringify(source.vertices[index]))
+      .join(">")));
+    expect(result.models[0].triangles.every((triangle) => sourceFaces.has(
+      triangle.indices.map((index) => JSON.stringify(result.models[0].vertices[index])).join(">"),
+    ))).toBe(true);
+  });
+
+  it("rejects a cross-object or altered triangle mapping", () => {
+    const source = grid("aircraft.obj", 4, 4);
+    const corrupted = structuredClone(source);
+    corrupted.vertices[corrupted.triangles[0].indices[0]].position[0] += 999;
+    expect(validateStationaryGeometry([source], [corrupted])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "OPT_VERTEX_MOVED", severity: "error" }),
+      expect.objectContaining({ code: "OPT_TRIANGLE_REMAPPED", severity: "error" }),
+    ]));
   });
 
   it("honors minimum allocation per part", () => {
