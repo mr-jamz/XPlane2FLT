@@ -1,47 +1,32 @@
-export function normalizeArchivePath(value: string): string {
-  const normalized = value.replace(/\\/g, "/").replace(/^\/+/, "");
-  const parts: string[] = [];
-
-  for (const part of normalized.split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") {
-      parts.pop();
-      continue;
-    }
-    parts.push(part);
-  }
-
-  return parts.join("/");
+export function normalizePath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "")
+    .replace(/\/+/g, "/")
+    .split("/")
+    .reduce<string[]>((parts, part) => {
+      if (!part || part === ".") return parts;
+      if (part === "..") parts.pop();
+      else parts.push(part);
+      return parts;
+    }, [])
+    .join("/");
 }
 
 export function dirname(path: string): string {
-  const index = path.lastIndexOf("/");
-  return index === -1 ? "" : path.slice(0, index);
+  const normalized = normalizePath(path);
+  const index = normalized.lastIndexOf("/");
+  return index < 0 ? "" : normalized.slice(0, index);
 }
 
 export function basename(path: string): string {
-  const index = path.lastIndexOf("/");
-  return index === -1 ? path : path.slice(index + 1);
+  return normalizePath(path).split("/").pop() ?? path;
 }
 
-export function removeExtension(path: string): string {
+export function resolveRelative(ownerPath: string, referencedPath: string): string {
+  return normalizePath(`${dirname(ownerPath)}/${referencedPath}`);
+}
+
+export function withoutExtension(path: string): string {
   return path.replace(/\.[^.\/]+$/, "");
 }
-
-export function resolveRelativePath(fromFile: string, relativePath: string): string {
-  const base = dirname(fromFile);
-  return normalizeArchivePath(base ? `${base}/${relativePath}` : relativePath);
-}
-
-export function safeFileStem(value: string): string {
-  const stem = removeExtension(basename(value))
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return stem || "aircraft";
-}
-
-export function extension(path: string): string {
-  const match = path.toLowerCase().match(/\.([^.\/]+)$/);
-  return match?.[1] ?? "";
-}
-

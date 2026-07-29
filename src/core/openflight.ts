@@ -1,4 +1,11 @@
-import type { Diagnostic, Obj8MaterialState, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
+import type {
+  Diagnostic,
+  FltCoordinateMode,
+  FltMaterial,
+  FltModel,
+  FltTriangle,
+  Obj8Vertex,
+} from "./types";
 
 const HEADER_LENGTH = 324;
 const GROUP_LENGTH = 44;
@@ -16,9 +23,9 @@ interface TextureBinding {
 }
 
 interface BuildInput {
-  models: Obj8Model[];
+  models: FltModel[];
   textures: TextureBinding[];
-  coordinateMode: "openflight-z-up" | "keep-xplane";
+  coordinateMode: FltCoordinateMode;
   databaseId?: string;
 }
 
@@ -115,7 +122,7 @@ function writeTexturePalette(writer: BigEndianWriter, texture: TextureBinding): 
   writer.int32(Math.floor(texture.index / 16) * 64);
 }
 
-function normalizedMaterial(triangle: Obj8Triangle): Obj8MaterialState {
+function normalizedMaterial(triangle: FltTriangle): FltMaterial {
   return triangle.material ?? {
     diffuse: [1, 1, 1],
     emissive: [0, 0, 0],
@@ -125,12 +132,12 @@ function normalizedMaterial(triangle: Obj8Triangle): Obj8MaterialState {
   };
 }
 
-function materialKey(material: Obj8MaterialState): string {
+function materialKey(material: FltMaterial): string {
   return [...material.diffuse, ...material.emissive, material.shininess, material.alpha, material.blended ? 1 : 0].join("|");
 }
 
-function collectMaterials(models: Obj8Model[]): { materials: Obj8MaterialState[]; indices: Map<string, number> } {
-  const materials: Obj8MaterialState[] = [];
+function collectMaterials(models: FltModel[]): { materials: FltMaterial[]; indices: Map<string, number> } {
+  const materials: FltMaterial[] = [];
   const indices = new Map<string, number>();
   for (const model of models) for (const triangle of model.triangles) {
     const material = normalizedMaterial(triangle);
@@ -143,7 +150,7 @@ function collectMaterials(models: Obj8Model[]): { materials: Obj8MaterialState[]
   return { materials, indices };
 }
 
-function writeMaterialPalette(writer: BigEndianWriter, material: Obj8MaterialState, index: number): void {
+function writeMaterialPalette(writer: BigEndianWriter, material: FltMaterial, index: number): void {
   recordHeader(writer, 113, MATERIAL_PALETTE_LENGTH);
   writer.int32(index);
   writer.ascii(`MAT${String(index).padStart(4, "0")}`, 12);
@@ -175,14 +182,14 @@ function transformVertex(vertex: Obj8Vertex, coordinateMode: BuildInput["coordin
  * Keep source indices untouched everywhere else and reverse exactly once here.
  */
 export function openFlightTriangleIndices(
-  triangle: Obj8Triangle,
+  triangle: FltTriangle,
   coordinateMode: BuildInput["coordinateMode"],
 ): [number, number, number] {
   const [a, b, c] = triangle.indices;
   return coordinateMode === "openflight-z-up" ? [a, c, b] : [a, b, c];
 }
 
-function writeVertexPalette(writer: BigEndianWriter, models: Obj8Model[], coordinateMode: BuildInput["coordinateMode"], vertexCount: number): void {
+function writeVertexPalette(writer: BigEndianWriter, models: FltModel[], coordinateMode: BuildInput["coordinateMode"], vertexCount: number): void {
   recordHeader(writer, 67, VERTEX_PALETTE_HEADER_LENGTH);
   writer.int32(VERTEX_PALETTE_HEADER_LENGTH + vertexCount * VERTEX_RECORD_LENGTH);
   for (const model of models) {
@@ -222,7 +229,7 @@ function writeObject(writer: BigEndianWriter, id: string): void {
   writer.int16(0); writer.int16(0); writer.int16(0); writer.int16(0);
 }
 
-function writeFace(writer: BigEndianWriter, id: string, textureIndex: number, materialIndex: number, triangle: Obj8Triangle): void {
+function writeFace(writer: BigEndianWriter, id: string, textureIndex: number, materialIndex: number, triangle: FltTriangle): void {
   const material = normalizedMaterial(triangle);
   const start = writer.length;
   recordHeader(writer, 5, FACE_LENGTH);
