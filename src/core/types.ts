@@ -34,6 +34,7 @@ export interface Obj8Batch {
   indices: number[];
   material: MaterialState;
   animationPath: number[];
+  visibility: VisibilityRule[];
   lod: [number, number] | null;
   line: number;
 }
@@ -71,6 +72,7 @@ export interface Obj8Light {
   position: Vec3;
   color?: [number, number, number, number];
   animationPath: number[];
+  visibility: VisibilityRule[];
 }
 
 export interface Obj8Model {

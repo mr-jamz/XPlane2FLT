@@ -53,4 +53,40 @@ describe("parseObj8", () => {
     ));
     expect(model.textureNormal).toBe("body_NML.png");
   });
+
+  it("applies ordered show/hide state to later draw batches without hiding earlier cabin walls", () => {
+    const cabin = parseObj8("objects/interior2.obj", `A
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 0 1 0 1 0 0 1
+IDX 0
+IDX 1
+IDX 2
+ANIM_begin
+TRIS 0 3
+ANIM_hide -1 0 uh60m/conf/seats2
+TRIS 0 3
+ANIM_hide 0 1 uh60m/conf/seats2
+TRIS 0 3
+ANIM_end
+`);
+
+    expect(cabin.batches).toHaveLength(3);
+    expect(cabin.batches[0].visibility).toEqual([]);
+    expect(cabin.batches[1].visibility).toEqual([{
+      mode: "hide",
+      min: -1,
+      max: 0,
+      dataref: "uh60m/conf/seats2",
+    }]);
+    expect(cabin.batches[2].visibility).toEqual([{
+      mode: "hide",
+      min: 0,
+      max: 1,
+      dataref: "uh60m/conf/seats2",
+    }]);
+    expect(cabin.animations[1].visibility).toEqual([]);
+  });
 });

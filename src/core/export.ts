@@ -103,6 +103,7 @@ function flattenModelInstance(
     if (batch.lod && !(lodDistance >= batch.lod[0] && lodDistance < batch.lod[1])) continue;
     const evaluated = batchMatrix(model, batch.animationPath, datarefs, base);
     if (!evaluated.visible) continue;
+    if (!ruleVisible(batch.visibility, datarefs)) continue;
     const normalMatrix = new THREE.Matrix3().getNormalMatrix(evaluated.matrix);
     const remap = new Map<number, number>();
     const mapIndex = (sourceIndex: number): number | null => {

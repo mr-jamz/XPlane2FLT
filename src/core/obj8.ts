@@ -7,6 +7,7 @@ import type {
   Obj8Model,
   Obj8Vertex,
   Vec3,
+  VisibilityRule,
 } from "./types";
 
 const defaultMaterial = (): MaterialState => ({
@@ -43,6 +44,9 @@ export function parseObj8(path: string, source: string): Obj8Model {
   const indexTable: number[] = [];
   const batches: Obj8Model["batches"] = [];
   const animations: AnimationGroup[] = [{ id: 0, parentId: null, transforms: [], visibility: [] }];
+  // ANIM_show/ANIM_hide are ordered render-state commands. They affect only
+  // geometry emitted after the command within the current ANIM scope.
+  const visibilityStack: Array<Map<string, VisibilityRule>> = [new Map()];
   const lights: Obj8Light[] = [];
   const animationStack = [0];
   const datarefs = new Set<string>();
@@ -131,8 +135,12 @@ export function parseObj8(path: string, source: string): Obj8Model {
       const id = animations.length;
       animations.push({ id, parentId: currentGroup().id, transforms: [], visibility: [] });
       animationStack.push(id);
+      visibilityStack.push(new Map(visibilityStack.at(-1)));
     } else if (command === "ANIM_END") {
-      if (animationStack.length > 1) animationStack.pop();
+      if (animationStack.length > 1) {
+        animationStack.pop();
+        visibilityStack.pop();
+      }
       else warnings.push(`Unmatched ANIM_end at line ${lineIndex + 1}.`);
     } else if (command === "ANIM_ROTATE" && values.length >= 7) {
       const dataref = parts[8] ?? "";
@@ -168,7 +176,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
       pendingTransform = null;
     } else if ((command === "ANIM_SHOW" || command === "ANIM_HIDE") && values.length >= 2 && parts[3]) {
       addDataref(parts[3]);
-      currentGroup().visibility.push({
+      visibilityStack.at(-1)!.set(parts[3], {
         mode: command === "ANIM_SHOW" ? "show" : "hide",
         min: values[0],
         max: values[1],
@@ -186,14 +194,15 @@ export function parseObj8(path: string, source: string): Obj8Model {
           indices: valid.slice(0, valid.length - (valid.length % 3)),
           material: cloneMaterial(material),
           animationPath: [...animationStack],
+          visibility: [...visibilityStack.at(-1)!.values()].map((rule) => ({ ...rule })),
           lod,
           line: lineIndex + 1,
         });
       }
     } else if (command === "LIGHT_NAMED" && values.length >= 3) {
-      lights.push({ kind: "named", name: parts[1], position: vec3(values), animationPath: [...animationStack] });
+      lights.push({ kind: "named", name: parts[1], position: vec3(values), animationPath: [...animationStack], visibility: [...visibilityStack.at(-1)!.values()].map((rule) => ({ ...rule })) });
     } else if (command === "LIGHT_PARAM" && parts[1] && values.length >= 3) {
-      lights.push({ kind: "param", name: parts[1], position: vec3(values), animationPath: [...animationStack] });
+      lights.push({ kind: "param", name: parts[1], position: vec3(values), animationPath: [...animationStack], visibility: [...visibilityStack.at(-1)!.values()].map((rule) => ({ ...rule })) });
     } else if (command === "LIGHT_CUSTOM" && values.length >= 7) {
       lights.push({
         kind: "custom",
@@ -201,6 +210,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
         position: vec3(values),
         color: [values[3], values[4], values[5], values[6]],
         animationPath: [...animationStack],
+        visibility: [...visibilityStack.at(-1)!.values()].map((rule) => ({ ...rule })),
       });
     }
   }

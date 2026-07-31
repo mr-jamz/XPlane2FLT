@@ -25,7 +25,6 @@ interface ViewerProps {
 interface RuntimeGroup {
   object: THREE.Group;
   transforms: AnimationTransform[];
-  visibility: VisibilityRule[];
 }
 
 interface RuntimeModel {
@@ -42,6 +41,12 @@ interface RuntimeMesh {
   mesh: THREE.Mesh;
   lit: THREE.MeshStandardMaterial;
   unlit: THREE.MeshBasicMaterial;
+  visibility: VisibilityRule[];
+}
+
+interface RuntimeVisibleObject {
+  object: THREE.Object3D;
+  visibility: VisibilityRule[];
 }
 
 interface LoadProgress {
@@ -144,6 +149,7 @@ export function Viewer(props: ViewerProps) {
     const runtimeModels: RuntimeModel[] = [];
     const runtimeAttachments: RuntimeAttachment[] = [];
     const runtimeMeshes: RuntimeMesh[] = [];
+    const runtimeVisibleObjects: RuntimeVisibleObject[] = [];
     const litMaterials: Array<{ material: THREE.MeshStandardMaterial; base: number; lightLevel?: { min: number; max: number; dataref: string } }> = [];
 
     const fitCamera = () => {
@@ -229,7 +235,7 @@ export function Viewer(props: ViewerProps) {
             groups.set(group.id, object);
             const parent = group.parentId === null ? instance : groups.get(group.parentId) ?? instance;
             parent.add(object);
-            runtimeGroups.push({ object, transforms: group.transforms, visibility: group.visibility });
+            runtimeGroups.push({ object, transforms: group.transforms });
           }
 
           for (const batch of model.batches) {
@@ -286,7 +292,7 @@ export function Viewer(props: ViewerProps) {
             mesh.castShadow = attachment.role !== "glass";
             mesh.receiveShadow = attachment.role !== "glass";
             mesh.renderOrder = attachment.role === "glass" ? 1000 + attachment.index : batch.line;
-            runtimeMeshes.push({ mesh, lit: material, unlit: unlitMaterial });
+            runtimeMeshes.push({ mesh, lit: material, unlit: unlitMaterial, visibility: batch.visibility });
             groups.get(batch.animationPath.at(-1) ?? 0)?.add(mesh);
             triangleCount += Math.floor(batch.indices.length / 3);
             drawCalls += 1;
@@ -306,6 +312,7 @@ export function Viewer(props: ViewerProps) {
               sprite.userData.modelPath = model.path;
               resources.push(spriteMaterial);
               groups.get(light.animationPath.at(-1) ?? 0)?.add(sprite);
+              runtimeVisibleObjects.push({ object: sprite, visibility: light.visibility });
             }
           }
         }
@@ -391,7 +398,6 @@ export function Viewer(props: ViewerProps) {
       }
       for (const group of runtimeGroups) {
         group.object.matrix.copy(animationMatrix(group.transforms, current.datarefs));
-        group.object.visible = ruleVisible(group.visibility, current.datarefs);
         group.object.matrixWorldNeedsUpdate = true;
       }
       for (const attachment of runtimeAttachments) {
@@ -399,9 +405,13 @@ export function Viewer(props: ViewerProps) {
           || (current.datarefs[attachment.hideDataref] ?? 0) < 0.5;
       }
       for (const entry of runtimeMeshes) {
+        entry.mesh.visible = ruleVisible(entry.visibility, current.datarefs);
         entry.mesh.material = current.unlit ? entry.unlit : entry.lit;
         entry.mesh.castShadow = !current.unlit;
         entry.mesh.receiveShadow = !current.unlit;
+      }
+      for (const entry of runtimeVisibleObjects) {
+        entry.object.visible = ruleVisible(entry.visibility, current.datarefs);
       }
       for (const entry of litMaterials) {
         let level = current.night;

@@ -41,6 +41,19 @@ button { color: inherit; }
 }
 .brand-header > div:nth-child(2) { display: flex; flex-direction: column; line-height: 1.1; }
 .brand-header strong { font-size: 15px; letter-spacing: -.01em; }
+.build-number {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 2px 6px;
+  border: 1px solid rgba(99,214,176,.28);
+  border-radius: 999px;
+  color: var(--green) !important;
+  background: rgba(99,214,176,.07);
+  font: 500 9px "DM Mono", monospace !important;
+  font-style: normal;
+  letter-spacing: .04em;
+  vertical-align: 1px;
+}
 .brand-header div > span { color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
 .brand-mark {
   width: 36px; height: 36px; border: 1px solid rgba(99, 214, 176, .35);

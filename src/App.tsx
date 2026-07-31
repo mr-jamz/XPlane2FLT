@@ -53,6 +53,7 @@ function datarefRanges(aircraft: LoadedAircraft): Map<string, DatarefRange> {
       for (const rule of group.visibility) add(rule.dataref, [rule.min, rule.max]);
     }
     for (const batch of model.batches) {
+      for (const rule of batch.visibility) add(rule.dataref, [rule.min, rule.max]);
       const level = batch.material.lightLevel;
       if (level) add(level.dataref, [level.min, level.max]);
     }
@@ -98,8 +99,8 @@ function EmptyState({ onSources, busy, error }: { onSources: (files: SourceFile[
       <header className="brand-header">
         <div className="brand-mark"><Plane size={20} /></div>
         <div>
-          <strong>XPlane2FLT</strong>
-          <span>Aircraft converter</span>
+          <strong>XPlane2FLT <span className="build-number">v1.0.3</span></strong>
+          <span>Aircraft viewer and OpenFlight converter</span>
         </div>
         <span className="local-badge">LOCAL · PRIVATE</span>
       </header>
@@ -111,7 +112,7 @@ function EmptyState({ onSources, busy, error }: { onSources: (files: SourceFile[
           <Plane size={58} strokeWidth={1.25} />
         </div>
         <p className="eyebrow">AIRCRAFT FOLDER INPUT</p>
-        <h1>See the aircraft,<br />not a loose pile of meshes.</h1>
+        <h1>View and convert<br />X-Plane aircraft.</h1>
         <p className="drop-copy">
           Drop a complete X‑Plane 12 aircraft folder. The viewer reads its ACF attachment list,
           OBJ8 render commands, textures, materials, LODs, lights, and dataref animations.
@@ -245,7 +246,7 @@ export default function App() {
       <header className="app-header">
         <div className="brand-compact">
           <div className="brand-mark"><Plane size={19} /></div>
-          <strong>XPlane2FLT <span>Viewer + converter</span></strong>
+          <strong>XPlane2FLT <span>Viewer + converter</span> <em className="build-number">v1.0.3</em></strong>
         </div>
         <div className="aircraft-title">
           <span className="status-light" />

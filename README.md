@@ -1,4 +1,4 @@
-# XPlane2FLT v10
+# XPlane2FLT v1.0.3
 
 A local-first browser application that loads a complete X-Plane 12 aircraft folder or ZIP, reproduces its assembled OBJ8 scene, and exports the resolved aircraft as one OpenFlight 16.0 `.flt` database with its original textures.
 

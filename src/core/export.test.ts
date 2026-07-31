@@ -29,6 +29,7 @@ function sourceModel(path = "objects/body.obj"): Obj8Model {
       indices: [0, 1, 2],
       material,
       animationPath: [0, 1],
+      visibility: [],
       lod: null,
       line: 1,
     }],
@@ -113,6 +114,24 @@ describe("viewer-to-FLT scene baking", () => {
       datarefs: { "test/kill/rotor": 0 },
       lodDistance: 0,
     }).models.map((model) => model.path)).toEqual(["objects/rotor.obj#1"]);
+  });
+
+  it("evaluates visibility per draw batch instead of hiding its whole animation group", () => {
+    const loaded = aircraft();
+    loaded.models[0].batches.push({
+      ...loaded.models[0].batches[0],
+      id: "hidden-variant",
+      visibility: [{ mode: "hide", min: 1, max: 1, dataref: "test/config" }],
+    });
+
+    const result = buildExportModels(loaded, {
+      visiblePaths: new Set(["objects/body.obj"]),
+      datarefs: { "test/config": 1 },
+      lodDistance: 0,
+    });
+
+    expect(result.models).toHaveLength(1);
+    expect(result.models[0].triangles).toHaveLength(1);
   });
 
   it("exports cockpit and interior shells as two-sided OpenFlight faces", () => {
