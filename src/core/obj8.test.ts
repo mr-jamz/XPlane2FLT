@@ -81,12 +81,29 @@ ANIM_end
       max: 0,
       dataref: "uh60m/conf/seats2",
     }]);
-    expect(cabin.batches[2].visibility).toEqual([{
-      mode: "hide",
-      min: 0,
-      max: 1,
-      dataref: "uh60m/conf/seats2",
-    }]);
+    expect(cabin.batches[2].visibility).toEqual([
+      {
+        mode: "hide",
+        min: -1,
+        max: 0,
+        dataref: "uh60m/conf/seats2",
+      },
+      {
+        mode: "hide",
+        min: 0,
+        max: 1,
+        dataref: "uh60m/conf/seats2",
+      },
+    ]);
     expect(cabin.animations[1].visibility).toEqual([]);
+  });
+
+  it("preserves repeated show/hide commands in source order", () => {
+    const model = parseObj8("objects/interior2.obj", `I\n800\nOBJ\nPOINT_COUNTS 3 0 0 3\nVT 0 0 0 0 1 0 0 0\nVT 1 0 0 0 1 0 1 0\nVT 0 1 0 0 1 0 0 1\nIDX 0\nIDX 1\nIDX 2\nANIM_begin\nANIM_hide 0 0 uh60m/conf/walls\nTRIS 0 3\nANIM_show 0 0 uh60m/conf/walls\nTRIS 0 3\nANIM_hide 1 1 uh60m/conf/walls\nTRIS 0 3\nANIM_end\n`);
+
+    expect(model.batches).toHaveLength(3);
+    expect(model.batches[0].visibility.map((rule) => rule.mode)).toEqual(["hide"]);
+    expect(model.batches[1].visibility.map((rule) => rule.mode)).toEqual(["hide", "show"]);
+    expect(model.batches[2].visibility.map((rule) => rule.mode)).toEqual(["hide", "show", "hide"]);
   });
 });

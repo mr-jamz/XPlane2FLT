@@ -59,13 +59,19 @@ export function ruleVisible(
   rules: VisibilityRule[],
   datarefs: Record<string, number>,
 ): boolean {
-  return rules.every((rule) => {
-    const value = Object.prototype.hasOwnProperty.call(datarefs, rule.dataref)
+  let suspended = false;
+  for (const rule of rules) {
+    const isConstant = !rule.dataref || rule.dataref.toLowerCase() === "none";
+    const value = isConstant
+      ? 0
+      : Object.prototype.hasOwnProperty.call(datarefs, rule.dataref)
       ? datarefs[rule.dataref]
       : 0;
     const inRange = value >= Math.min(rule.min, rule.max) && value <= Math.max(rule.min, rule.max);
-    return rule.mode === "show" ? inRange : !inRange;
-  });
+    if (!inRange) continue;
+    suspended = rule.mode === "hide";
+  }
+  return !suspended;
 }
 
 export function attachmentMatrix(attachment: AircraftAttachment): THREE.Matrix4 {

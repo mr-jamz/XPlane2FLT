@@ -99,7 +99,7 @@ function EmptyState({ onSources, busy, error }: { onSources: (files: SourceFile[
       <header className="brand-header">
         <div className="brand-mark"><Plane size={20} /></div>
         <div>
-          <strong>XPlane2FLT <span className="build-number">v1.0.3</span></strong>
+          <strong>XPlane2FLT <span className="build-number">v1.0.4</span></strong>
           <span>Aircraft viewer and OpenFlight converter</span>
         </div>
         <span className="local-badge">LOCAL · PRIVATE</span>
@@ -246,7 +246,7 @@ export default function App() {
       <header className="app-header">
         <div className="brand-compact">
           <div className="brand-mark"><Plane size={19} /></div>
-          <strong>XPlane2FLT <span>Viewer + converter</span> <em className="build-number">v1.0.3</em></strong>
+          <strong>XPlane2FLT <span>Viewer + converter</span> <em className="build-number">v1.0.4</em></strong>
         </div>
         <div className="aircraft-title">
           <span className="status-light" />

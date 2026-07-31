@@ -134,6 +134,22 @@ describe("viewer-to-FLT scene baking", () => {
     expect(result.models[0].triangles).toHaveLength(1);
   });
 
+  it("replays ordered hide/show commands when exporting a draw batch", () => {
+    const loaded = aircraft();
+    loaded.models[0].batches[0].visibility = [
+      { mode: "hide", min: 0, max: 0, dataref: "test/config" },
+      { mode: "show", min: 0, max: 0, dataref: "test/config" },
+    ];
+    const result = buildExportModels(loaded, {
+      visiblePaths: new Set([loaded.models[0].path]),
+      datarefs: { "test/config": 0 },
+      lodDistance: 0,
+    });
+
+    expect(result.models).toHaveLength(1);
+    expect(result.models[0].triangles).toHaveLength(1);
+  });
+
   it("exports cockpit and interior shells as two-sided OpenFlight faces", () => {
     const interior = sourceModel("objects/interior2.obj");
     const loaded = aircraft([interior]);

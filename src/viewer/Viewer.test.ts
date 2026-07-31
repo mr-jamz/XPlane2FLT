@@ -36,19 +36,15 @@ describe("animationMatrix", () => {
 });
 
 describe("ruleVisible", () => {
-  it("uses the neutral numeric state for missing datarefs instead of drawing every configuration branch", () => {
-    const unfolded: VisibilityRule[] = [{
-      mode: "show",
-      min: 0,
-      max: 0,
-      dataref: "uh60m/rotor/folded",
-    }];
-    const folded: VisibilityRule[] = [{
-      mode: "show",
-      min: 1,
-      max: 1,
-      dataref: "uh60m/rotor/folded",
-    }];
+  it("replays X-Plane's ordered hide/show draw suspension state", () => {
+    const unfolded: VisibilityRule[] = [
+      { mode: "hide", min: 0, max: 1, dataref: "none" },
+      { mode: "show", min: 0, max: 0, dataref: "uh60m/rotor/folded" },
+    ];
+    const folded: VisibilityRule[] = [
+      { mode: "hide", min: 0, max: 1, dataref: "none" },
+      { mode: "show", min: 1, max: 1, dataref: "uh60m/rotor/folded" },
+    ];
 
     expect(ruleVisible(unfolded, {})).toBe(true);
     expect(ruleVisible(folded, {})).toBe(false);
