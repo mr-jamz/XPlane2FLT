@@ -84,15 +84,19 @@ export function attachmentMatrix(attachment: AircraftAttachment): THREE.Matrix4 
 }
 
 /**
- * Interior shells in many aircraft are authored as thin, one-surface meshes.
- * X-Plane's cockpit render path keeps these usable from the camera side even
- * when the OBJ omits ATTR_no_cull. Apply the same fallback in both the live
- * viewer and the flattened OpenFlight export.
+ * Aircraft OBJ8 packages frequently split a single visible shell across
+ * exterior, door, glass, cockpit and interior attachments.  When the camera
+ * crosses that shell, a filename/role-only fallback leaves holes because the
+ * reverse-facing surface may live in an attachment named `fuselage` or
+ * `doors`, not `interior`.
+ *
+ * The viewer and flattened FLT are inspection assets whose cameras may move
+ * freely through the aircraft, so every aircraft face must be drawable from
+ * either direction.  This changes only the culling flag: vertex order, UVs,
+ * normals, transforms and texture bindings remain untouched.
  */
-export function attachmentNeedsTwoSidedFaces(attachment: AircraftAttachment): boolean {
-  if (attachment.role === "interior" || attachment.role === "cockpit") return true;
-  const path = normalizePath(attachment.path).toLowerCase();
-  return /(?:^|[/_.-])(?:interior|inside|cockpit|cabin)(?=$|[/_.-]|\d)/.test(path);
+export function attachmentNeedsTwoSidedFaces(_attachment: AircraftAttachment): boolean {
+  return true;
 }
 
 export function modelAttachments(

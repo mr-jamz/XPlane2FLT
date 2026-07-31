@@ -115,13 +115,27 @@ describe("viewer-to-FLT scene baking", () => {
     }).models.map((model) => model.path)).toEqual(["objects/rotor.obj#1"]);
   });
 
-  it("exports thin cockpit and interior shells as two-sided OpenFlight faces", () => {
+  it("exports cockpit and interior shells as two-sided OpenFlight faces", () => {
     const interior = sourceModel("objects/interior2.obj");
     const loaded = aircraft([interior]);
     loaded.manifest.attachments[0].role = "interior";
 
     const result = buildExportModels(loaded, {
       visiblePaths: new Set([interior.path]),
+      datarefs: {},
+      lodDistance: 0,
+    });
+
+    expect(result.models[0].triangles[0].doubleSided).toBe(true);
+  });
+
+  it("keeps mixed exterior shells visible from an interior camera in OpenFlight", () => {
+    const fuselage = sourceModel("objects/fuselage.obj");
+    const loaded = aircraft([fuselage]);
+    loaded.manifest.attachments[0].role = "exterior";
+
+    const result = buildExportModels(loaded, {
+      visiblePaths: new Set([fuselage.path]),
       datarefs: {},
       lodDistance: 0,
     });
