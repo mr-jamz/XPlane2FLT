@@ -7,8 +7,10 @@ function unquote(value: string): string {
 
 function roleFromProperties(properties: Map<string, string>): AttachmentRole {
   const joined = [...properties.entries()].map(([key, value]) => `${key} ${value}`).join(" ").toLowerCase();
-  if (/cockpit/.test(joined) && /(?:^|\s)1(?:\s|$)/.test(joined)) return "cockpit";
   if (/glass/.test(joined) || /_lighting\s+2/.test(joined)) return "glass";
+  // Plane Maker does not consistently mark third-party cockpit objects with
+  // a dedicated boolean. Their attachment filename is the reliable signal.
+  if (/cockpit/.test(joined)) return "cockpit";
   if (/interior|inside|_lighting\s+1/.test(joined)) return "interior";
   if (/exterior|outside|_lighting\s+0/.test(joined)) return "exterior";
   return "unknown";

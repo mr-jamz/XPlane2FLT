@@ -83,6 +83,18 @@ export function attachmentMatrix(attachment: AircraftAttachment): THREE.Matrix4 
   );
 }
 
+/**
+ * Interior shells in many aircraft are authored as thin, one-surface meshes.
+ * X-Plane's cockpit render path keeps these usable from the camera side even
+ * when the OBJ omits ATTR_no_cull. Apply the same fallback in both the live
+ * viewer and the flattened OpenFlight export.
+ */
+export function attachmentNeedsTwoSidedFaces(attachment: AircraftAttachment): boolean {
+  if (attachment.role === "interior" || attachment.role === "cockpit") return true;
+  const path = normalizePath(attachment.path).toLowerCase();
+  return /(?:^|[/_.-])(?:interior|inside|cockpit|cabin)(?=$|[/_.-]|\d)/.test(path);
+}
+
 export function modelAttachments(
   aircraft: LoadedAircraft,
   model: Obj8Model,

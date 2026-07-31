@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { AircraftAttachment, AnimationTransform, LoadedAircraft, Obj8Model, VisibilityRule } from "../core/types";
-import { animationMatrix, modelAttachments, ruleVisible } from "../core/scene";
+import { animationMatrix, attachmentNeedsTwoSidedFaces, modelAttachments, ruleVisible } from "../core/scene";
 import { loadTexture } from "./texture";
 
 export { animationMatrix, ruleVisible } from "../core/scene";
@@ -219,6 +219,7 @@ export function Viewer(props: ViewerProps) {
           );
           modelRoot.add(instance);
           runtimeAttachments.push({ object: instance, hideDataref: attachment.hideDataref });
+          const attachmentDoubleSided = attachmentNeedsTwoSidedFaces(attachment);
 
           const groups = new Map<number, THREE.Group>();
           for (const group of model.animations) {
@@ -243,7 +244,7 @@ export function Viewer(props: ViewerProps) {
               emissiveIntensity: props.night,
               roughness: Math.max(0.05, 1 - shiny),
               metalness: model.normalMetalness ? 0.55 : 0,
-              side: state.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+              side: state.doubleSided || attachmentDoubleSided ? THREE.DoubleSide : THREE.FrontSide,
               transparent: state.blend !== "test",
               alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
               // Plane Maker glass objects are explicitly drawn last. Ordinary
@@ -254,7 +255,7 @@ export function Viewer(props: ViewerProps) {
             });
             const unlitMaterial = new THREE.MeshBasicMaterial({
               color: new THREE.Color(...state.diffuse),
-              side: state.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+              side: state.doubleSided || attachmentDoubleSided ? THREE.DoubleSide : THREE.FrontSide,
               transparent: state.blend !== "test",
               alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
               depthWrite: attachment.role !== "glass",

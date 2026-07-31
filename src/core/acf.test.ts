@@ -46,4 +46,17 @@ P _obja/0/_lighting 0
       role: "exterior",
     });
   });
+
+  it("classifies named cockpit and interior attachments without relying on inconsistent flags", () => {
+    const result = parseAcf("Seahawk.acf", `I
+1200 Version
+ACF
+P _obja/2/_v10_att_file_stl cockpit1.obj
+P _obja/2/_obj_flags 77
+P _obja/12/_v10_att_file_stl interior2.obj
+P _obja/12/_obj_flags 73
+`);
+
+    expect(result.attachments.map(({ role }) => role)).toEqual(["cockpit", "interior"]);
+  });
 });

@@ -115,6 +115,20 @@ describe("viewer-to-FLT scene baking", () => {
     }).models.map((model) => model.path)).toEqual(["objects/rotor.obj#1"]);
   });
 
+  it("exports thin cockpit and interior shells as two-sided OpenFlight faces", () => {
+    const interior = sourceModel("objects/interior2.obj");
+    const loaded = aircraft([interior]);
+    loaded.manifest.attachments[0].role = "interior";
+
+    const result = buildExportModels(loaded, {
+      visiblePaths: new Set([interior.path]),
+      datarefs: {},
+      lodDistance: 0,
+    });
+
+    expect(result.models[0].triangles[0].doubleSided).toBe(true);
+  });
+
   it("packages one validated FLT together with the exact resolved texture bytes", async () => {
     const loaded = aircraft();
     const result = await exportAircraftToFlt(loaded, {

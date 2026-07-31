@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import * as THREE from "three";
 import { basename } from "./path";
 import { buildOpenFlight, validateOpenFlight } from "./openflight";
-import { animationMatrix, attachmentMatrix, modelAttachments, ruleVisible } from "./scene";
+import { animationMatrix, attachmentMatrix, attachmentNeedsTwoSidedFaces, modelAttachments, ruleVisible } from "./scene";
 import type {
   Diagnostic,
   FltExportOptions,
@@ -97,6 +97,7 @@ function flattenModelInstance(
   const vertices: Obj8Vertex[] = [];
   const triangles: FltTriangle[] = [];
   const base = attachmentMatrix(attachment);
+  const attachmentDoubleSided = attachmentNeedsTwoSidedFaces(attachment);
 
   for (const batch of model.batches) {
     if (batch.lod && !(lodDistance >= batch.lod[0] && lodDistance < batch.lod[1])) continue;
@@ -130,7 +131,7 @@ function flattenModelInstance(
       }
       triangles.push({
         indices: [a, b, c],
-        doubleSided: batch.material.doubleSided,
+        doubleSided: batch.material.doubleSided || attachmentDoubleSided,
         material: materialFromState(batch.material),
       });
     }
