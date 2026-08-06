@@ -1,5 +1,14 @@
 # XPlane2FLT v9 — Selected OBJ8 3D Preview
 
+## v9.4 configurable object-selection highlight
+
+- Adds a light translucent overlay to the OBJ8 object clicked in the viewport.
+- Includes red, orange, yellow, green, blue, purple, and white highlight swatches.
+- Updates an active highlight immediately when its color changes.
+- Remembers the chosen highlight color in the browser.
+- Tracks selection by full OBJ8 path so duplicate display names cannot target the wrong object.
+- Keeps the underlying texture visible and never alters conversion geometry or materials.
+
 ## v9.3 complete draw-state and solid-surface correction
 
 - Renders every selected drawable source triangle; preview sampling no longer
