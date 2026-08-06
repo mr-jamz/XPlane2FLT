@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildOpenFlight, openFlightTriangleIndices, validateOpenFlight } from "../src/core/openflight";
-import { parseObj8 } from "../src/core/obj8";
+import { buildOpenFlight, openFlightTriangleIndices, validateOpenFlight } from "../converter/openflight";
+import { parseObj8 } from "../converter/obj8";
 
 function recordOpcodes(bytes: Uint8Array): number[] {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

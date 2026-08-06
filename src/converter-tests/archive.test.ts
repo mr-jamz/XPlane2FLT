@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { convertArchive, inspectArchive } from "../src/core/archive";
+import { convertArchive, inspectArchive } from "../converter/archive";
 
 async function sampleAircraftZip(): Promise<Uint8Array> {
   const zip = new JSZip();

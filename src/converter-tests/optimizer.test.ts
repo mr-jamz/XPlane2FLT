@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { estimateOptimizedTriangles, optimizeModels, validateStationaryGeometry } from "../src/core/optimizer";
-import type { GeometryOptimizationOptions, Obj8Model } from "../src/core/types";
+import { estimateOptimizedTriangles, optimizeModels, validateStationaryGeometry } from "../converter/optimizer";
+import type { GeometryOptimizationOptions, Obj8Model } from "../converter/types";
 
 function grid(path: string, width: number, height: number): Obj8Model {
   const vertices = [];

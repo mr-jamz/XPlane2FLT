@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseObj8 } from "../src/core/obj8";
+import { parseObj8 } from "../converter/obj8";
 
 const SAMPLE_OBJ = `I
 800
