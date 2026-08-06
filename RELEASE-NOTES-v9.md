@@ -1,0 +1,71 @@
+# XPlane2FLT v9 — Selected OBJ8 3D Preview
+
+## v9.4 configurable object-selection highlight
+
+- Adds a light translucent overlay to the OBJ8 object clicked in the viewport.
+- Includes red, orange, yellow, green, blue, purple, and white highlight swatches.
+- Updates an active highlight immediately when its color changes.
+- Remembers the chosen highlight color in the browser.
+- Tracks selection by full OBJ8 path so duplicate display names cannot target the wrong object.
+- Keeps the underlying texture visible and never alters conversion geometry or materials.
+
+## v9.3 complete draw-state and solid-surface correction
+
+- Renders every selected drawable source triangle; preview sampling no longer
+  removes random fuselage faces or creates apparent holes.
+- Interprets `ATTR_draw_enable` and `ATTR_draw_disable` at each `TRIS` command.
+- Treats ordinary aircraft diffuse textures as opaque by default instead of
+  misusing their alpha channel as transparency.
+- Applies real blending only after `ATTR_blend`; `ATTR_no_blend` uses its alpha
+  cutoff and keeps depth writing enabled.
+- Keeps draw-disabled ranges out of the final OpenFlight conversion as well as
+  the preview.
+
+## v9.2 preview orientation correction
+
+- Converts OBJ8 triangle winding at the Three.js preview boundary so ordinary
+  single-sided aircraft surfaces render from the exterior.
+- Keeps `ATTR_no_cull` surfaces double-sided.
+- Does not mutate parsed geometry or change the already-verified OpenFlight
+  export winding.
+
+This release is based on the verified v8 stationary/material-safe converter and
+preserves its OpenFlight and ModelConverterX compatibility path.
+
+## Corrected in the rebuilt v9
+
+- Reverses triangle winding exactly once when converting OBJ8 coordinates to
+  OpenFlight Z-up coordinates, so exterior faces remain visible in
+  ModelConverterX.
+- Transforms vertex normals with the same coordinate conversion without
+  changing source positions, UVs, or material relationships.
+- Preserves `ATTR_no_cull` and `ATTR_cull` per draw batch instead of making the
+  entire aircraft artificially double-sided.
+- Adds record-level regression tests for converted winding, transformed normals,
+  source-index immutability, and OpenFlight two-sided draw state.
+
+## Added
+
+- Interactive 3D rendering of the currently selected OBJ8 files.
+- Source-coordinate assembly view before conversion.
+- Resolved PNG, JPEG, BMP, DDS, and TGA diffuse textures in the preview.
+- Orbit, zoom, pan, and frame-selection camera controls.
+- Clicked-part identification and removal from the final package.
+- Complete selected drawable geometry with no display-only triangle removal.
+
+## Preserved from v8
+
+- Complete-source-triangle simplification without replacement coordinates.
+- Per-OBJ index maps and stationary bounds validation.
+- Full position, normal, UV, material, culling, alpha, emissive, and shininess
+  preservation.
+- Exact full-attribute welding only.
+- ModelConverterX-compatible Face, Vertex Palette, Vertex List, Texture Palette,
+  and Material Palette records.
+- Exterior-only suggestions, editable object selection, geometry presets,
+  texture resolution/downscaling, preflight diagnostics, and package reports.
+- Browser-only processing and GitHub Pages deployment.
+
+The 3D preview never feeds modified data back into conversion. Camera state and
+texture decoding remain isolated from the stationary/material-safe export
+pipeline.

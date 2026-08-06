@@ -1,0 +1,90 @@
+import { describe, expect, it } from "vitest";
+import { estimateOptimizedTriangles, optimizeModels, validateStationaryGeometry } from "../src/core/optimizer";
+import type { GeometryOptimizationOptions, Obj8Model } from "../src/core/types";
+
+function grid(path: string, width: number, height: number): Obj8Model {
+  const vertices = [];
+  for (let y = 0; y <= height; y += 1) for (let x = 0; x <= width; x += 1) vertices.push({
+    position: [x, y, Math.sin(x * .05) * .1] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    uv: [x / width, y / height] as [number, number],
+  });
+  const triangles = [];
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const a = y * (width + 1) + x; const b = a + 1; const c = a + width + 1; const d = c + 1;
+    triangles.push({ indices: [a, b, d] as [number, number, number], doubleSided: false });
+    triangles.push({ indices: [a, d, c] as [number, number, number], doubleSided: false });
+  }
+  return { path, name: path, vertices, triangles, diagnostics: [] };
+}
+
+const options: GeometryOptimizationOptions = {
+  preset: "custom", targetTriangles: 2_000, minTrianglesPerPart: 300,
+  preserveThinParts: true, weldVertices: true, removeDegenerateFaces: true,
+  removeDuplicateFaces: true, textureMaxSize: 0,
+};
+
+describe("geometry optimizer", () => {
+  it("reduces geometry while retaining every part", () => {
+    const result = optimizeModels([grid("fuselage.obj", 80, 50), grid("rotor.obj", 36, 12)], options);
+    expect(result.models).toHaveLength(2);
+    expect(result.models.every((model) => model.triangles.length > 0)).toBe(true);
+    expect(result.stats.optimizedTriangles).toBeLessThan(result.stats.originalTriangles);
+    expect(result.models[1].triangles.length).toBeGreaterThanOrEqual(250);
+  });
+
+  it("keeps indices and UV values valid", () => {
+    const model = optimizeModels([grid("aircraft.obj", 60, 40)], options).models[0];
+    expect(model.triangles.every((triangle) => triangle.indices.every((index) => index >= 0 && index < model.vertices.length))).toBe(true);
+    expect(model.vertices.every((vertex) => vertex.uv.every(Number.isFinite))).toBe(true);
+  });
+
+  it("never invents or shifts vertex coordinates during simplification", () => {
+    const source = grid("aircraft.obj", 80, 50);
+    const sourcePositions = new Set(source.vertices.map((vertex) => vertex.position.join(",")));
+    const model = optimizeModels([source], {
+      ...options,
+      targetTriangles: 500,
+      minTrianglesPerPart: 4,
+    }).models[0];
+
+    expect(model.triangles.length).toBeLessThan(source.triangles.length);
+    expect(model.vertices.every((vertex) => sourcePositions.has(vertex.position.join(",")))).toBe(true);
+    expect(validateStationaryGeometry([source], [model])).toEqual([]);
+  });
+
+  it("selects only intact source triangles with their original UVs and normals", () => {
+    const source = grid("aircraft.obj", 80, 50);
+    const result = optimizeModels([source], { ...options, targetTriangles: 600, minTrianglesPerPart: 4 });
+    expect(result.diagnostics).toEqual([]);
+    const sourceFaces = new Set(source.triangles.map((triangle) => triangle.indices
+      .map((index) => JSON.stringify(source.vertices[index]))
+      .join(">")));
+    expect(result.models[0].triangles.every((triangle) => sourceFaces.has(
+      triangle.indices.map((index) => JSON.stringify(result.models[0].vertices[index])).join(">"),
+    ))).toBe(true);
+  });
+
+  it("rejects a cross-object or altered triangle mapping", () => {
+    const source = grid("aircraft.obj", 4, 4);
+    const corrupted = structuredClone(source);
+    corrupted.vertices[corrupted.triangles[0].indices[0]].position[0] += 999;
+    expect(validateStationaryGeometry([source], [corrupted])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "OPT_VERTEX_MOVED", severity: "error" }),
+      expect.objectContaining({ code: "OPT_TRIANGLE_REMAPPED", severity: "error" }),
+    ]));
+  });
+
+  it("honors minimum allocation per part", () => {
+    const models = [grid("a.obj", 20, 20), grid("b.obj", 20, 20)];
+    expect(estimateOptimizedTriangles(models, { ...options, targetTriangles: 100 })).toBe(600);
+  });
+
+  it("removes OBJ8 draw-disabled ranges from converted geometry", () => {
+    const source = grid("aircraft.obj", 4, 4);
+    source.triangles[0].drawEnabled = false;
+    const result = optimizeModels([source], { ...options, preset: "original" });
+    expect(result.models[0].triangles).toHaveLength(source.triangles.length - 1);
+    expect(result.models[0].triangles.every((triangle) => triangle.drawEnabled !== false)).toBe(true);
+  });
+});
