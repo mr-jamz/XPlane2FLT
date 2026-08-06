@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { animationMatrix, ruleVisible } from "./Viewer";
+import * as THREE from "three";
+import { animationMatrix, previewMaterialSide, ruleVisible } from "./Viewer";
 import type { AnimationTransform, VisibilityRule } from "../core/types";
+
+describe("previewMaterialSide", () => {
+  it("keeps aircraft surfaces visible from interior camera positions", () => {
+    expect(previewMaterialSide(false)).toBe(THREE.DoubleSide);
+    expect(previewMaterialSide(true)).toBe(THREE.DoubleSide);
+  });
+});
 
 describe("animationMatrix", () => {
   it("keeps plugin-driven aircraft parts at their authored coordinates until a dataref is explicit", () => {

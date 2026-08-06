@@ -50,6 +50,12 @@ interface RuntimeHighlight {
   path: string;
 }
 
+// Some aircraft omit ATTR_no_cull on interior shell batches even though those
+// surfaces must remain visible from cabin and cockpit camera positions.
+export function previewMaterialSide(_authoredDoubleSided: boolean): THREE.Side {
+  return THREE.DoubleSide;
+}
+
 interface LoadProgress {
   geometryBuilt: number;
   geometryTotal: number;
@@ -320,7 +326,7 @@ export function Viewer(props: ViewerProps) {
               emissiveIntensity: props.night,
               roughness: Math.max(0.05, 1 - shiny),
               metalness: model.normalMetalness ? 0.55 : 0,
-              side: state.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+              side: previewMaterialSide(state.doubleSided),
               transparent: state.blend !== "test",
               alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
               // Plane Maker glass objects are explicitly drawn last. Ordinary
@@ -331,7 +337,7 @@ export function Viewer(props: ViewerProps) {
             });
             const unlitMaterial = new THREE.MeshBasicMaterial({
               color: new THREE.Color(...state.diffuse),
-              side: state.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+              side: previewMaterialSide(state.doubleSided),
               transparent: state.blend !== "test",
               alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
               depthWrite: attachment.role !== "glass",
@@ -365,7 +371,7 @@ export function Viewer(props: ViewerProps) {
             runtimeMeshes.push({ mesh, lit: material, unlit: unlitMaterial });
             const highlightMaterial = new THREE.MeshBasicMaterial({
               color: latest.current.highlightColor,
-              side: state.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+              side: previewMaterialSide(state.doubleSided),
               transparent: true,
               opacity: 0.28,
               depthWrite: false,
