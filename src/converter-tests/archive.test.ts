@@ -79,7 +79,7 @@ describe("aircraft archive pipeline", () => {
     expect(inspection.diagnostics.some((item) => item.code === "MISSING_TEXTURE")).toBe(false);
   });
 
-  it("refuses to export selected geometry without a diffuse texture", async () => {
+  it("warns before exporting geometry without a diffuse texture and supports an explicit bypass", async () => {
     const zip = new JSZip();
     zip.file("Aircraft/demo.acf", "I\n1200 Version\n");
     zip.file("Aircraft/objects/fuselage.obj", [
@@ -101,5 +101,20 @@ describe("aircraft archive pipeline", () => {
         removeDuplicateFaces: true, textureMaxSize: 0,
       },
     })).rejects.toThrow("no resolvable diffuse texture");
+
+    const output = await convertArchive(source, inspection, {
+      outputName: "demo",
+      coordinateMode: "openflight-z-up",
+      includeUnreferencedTextures: false,
+      selectedModelPaths: inspection.models.map((model) => model.path),
+      allowMissingDiffuseTextures: true,
+      optimization: {
+        preset: "original", targetTriangles: 1, minTrianglesPerPart: 1,
+        preserveThinParts: true, weldVertices: true, removeDegenerateFaces: true,
+        removeDuplicateFaces: true, textureMaxSize: 0,
+      },
+    });
+    expect(output.objectCount).toBe(1);
+    expect(output.textureCount).toBe(0);
   });
 });

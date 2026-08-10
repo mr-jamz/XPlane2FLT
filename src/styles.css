@@ -184,6 +184,9 @@ button { color: inherit; }
 .conversion-button { width: 100%; margin-top: 5px; }
 .conversion-message { margin: 14px; display: flex; align-items: flex-start; gap: 8px; padding: 11px; border-radius: 8px; font-size: 9px; line-height: 1.5; }
 .conversion-message.is-error { color: #efb879; border: 1px solid rgba(233,166,87,.25); background: rgba(233,166,87,.06); }
+.conversion-message.is-warning { flex-wrap: wrap; color: #efc56f; border: 1px solid rgba(239,197,111,.28); background: rgba(239,197,111,.06); }
+.conversion-message.is-warning span { flex: 1; min-width: 180px; }
+.conversion-message.is-warning button { width: 100%; margin-top: 3px; }
 .conversion-result { margin: 14px; padding: 15px; border: 1px solid rgba(99,214,176,.25); border-radius: 9px; background: rgba(99,214,176,.055); }
 .conversion-result .eyebrow { display: flex; align-items: center; gap: 6px; }
 .conversion-result h3 { margin: 8px 0 3px; font-size: 15px; }

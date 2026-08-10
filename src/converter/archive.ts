@@ -218,11 +218,11 @@ export async function convertArchive(
   const selectedModels = inspection.models.filter((model) => selectedPathSet.has(model.path.toLowerCase()));
   if (selectedModels.length === 0) throw new Error("Select at least one OBJ8 mesh before converting.");
   const untexturedModels = selectedModels.filter((model) => model.triangles.length > 0 && !model.texturePath);
-  if (untexturedModels.length > 0) {
+  if (untexturedModels.length > 0 && !options.allowMissingDiffuseTextures) {
     const examples = untexturedModels.slice(0, 4).map((model) => basename(model.path)).join(", ");
     throw new Error(
       `${untexturedModels.length} selected mesh${untexturedModels.length === 1 ? "" : "es"} have no resolvable diffuse texture`
-      + ` (${examples}${untexturedModels.length > 4 ? ", …" : ""}). Add the missing PNG/DDS files or deselect those meshes before converting.`,
+      + ` (${examples}${untexturedModels.length > 4 ? ", …" : ""}). Add the missing PNG/DDS files, deselect those meshes, or confirm that you want to export them without diffuse textures.`,
     );
   }
   const optimized = optimizeModels(selectedModels, options.optimization);

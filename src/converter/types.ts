@@ -68,6 +68,7 @@ export interface ConversionOptions {
   coordinateMode: "openflight-z-up" | "keep-xplane";
   includeUnreferencedTextures: boolean;
   selectedModelPaths: string[];
+  allowMissingDiffuseTextures?: boolean;
   optimization: GeometryOptimizationOptions;
 }
 

@@ -40,12 +40,14 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
   const [includeAllTextures, setIncludeAllTextures] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [missingTextureWarning, setMissingTextureWarning] = useState<string | null>(null);
   const [result, setResult] = useState<ConversionResult | null>(null);
   const visibleCount = useMemo(() => aircraft.models.filter((model) => visiblePaths.has(model.path)).length, [aircraft, visiblePaths]);
 
-  const convert = async () => {
+  const convert = async (allowMissingDiffuseTextures = false) => {
     setBusy(true);
     setError(null);
+    setMissingTextureWarning(null);
     setResult(null);
     try {
       const source = await makeSourceArchive(aircraft);
@@ -58,6 +60,7 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
         coordinateMode: "openflight-z-up",
         includeUnreferencedTextures: includeAllTextures,
         selectedModelPaths,
+        allowMissingDiffuseTextures,
         optimization: {
           preset,
           targetTriangles: settings.targetTriangles,
@@ -71,7 +74,9 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
       });
       setResult(next);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Conversion failed.");
+      const message = reason instanceof Error ? reason.message : "Conversion failed.";
+      if (message.includes("no resolvable diffuse texture")) setMissingTextureWarning(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -107,11 +112,20 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
         <div><span>Selected objects</span><strong>{visibleCount}</strong></div>
         <div><span>Coordinates</span><strong>OpenFlight Z-up</strong></div>
         <p>Visibility toggles determine export selection. Viewer geometry, textures, and highlight colors are never modified.</p>
-        <button type="button" className="primary-button conversion-button" disabled={busy || visibleCount === 0} onClick={convert}>
+        <button type="button" className="primary-button conversion-button" disabled={busy || visibleCount === 0} onClick={() => void convert(false)}>
           {busy ? <LoaderCircle className="spinner-icon" size={17} /> : <FileArchive size={17} />}
           {busy ? "Building FLT package…" : "Convert visible objects"}
         </button>
       </section>
+      {missingTextureWarning && (
+        <div className="conversion-message is-warning">
+          <CircleAlert size={16} />
+          <span>{missingTextureWarning} The affected geometry will still be included, but it may appear untextured.</span>
+          <button type="button" className="secondary-button" disabled={busy} onClick={() => void convert(true)}>
+            {busy ? "Exporting…" : "Export anyway"}
+          </button>
+        </div>
+      )}
       {error && <div className="conversion-message is-error"><CircleAlert size={16} /><span>{error}</span></div>}
       {result && (
         <section className="conversion-result">
