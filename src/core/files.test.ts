@@ -15,4 +15,14 @@ tailnum=24611
       "uh60m/conf/tailnum": 24611,
     });
   });
+
+  it("does not turn saved loadout choices into attachment kill switches", () => {
+    const defaults = parseOptionDefaults("seats=0\ninterior=0", ["uh60m"]);
+    expect(defaults).toEqual({
+      "uh60m/conf/seats": 0,
+      "uh60m/conf/interior": 0,
+    });
+    expect(defaults).not.toHaveProperty("uh60m/kill/seats");
+    expect(defaults).not.toHaveProperty("uh60m/kill/interior");
+  });
 });

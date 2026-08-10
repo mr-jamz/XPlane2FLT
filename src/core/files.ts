@@ -153,21 +153,12 @@ export async function loadAircraft(inputFiles: SourceFile[]): Promise<LoadedAirc
     ? parseOptionDefaults(await optionSource.file.text(), datarefPrefixes)
     : {};
 
-  if (optionSource) {
-    const options = new Map(Object.entries(defaultDatarefs).map(([name, value]) => [
-      name.slice(name.lastIndexOf("/") + 1).toLowerCase(),
-      value,
-    ]));
-    for (const attachment of manifest.attachments) {
-      if (!attachment.hideDataref) continue;
-      const name = attachment.hideDataref.slice(attachment.hideDataref.lastIndexOf("/") + 1).toLowerCase();
-      const optionName = name === "ramp" ? "cargo" : name;
-      const selected = options.get(optionName);
-      if (selected !== undefined && (selected === 0 || selected === 1)) {
-        defaultDatarefs[attachment.hideDataref] = selected === 0 ? 1 : 0;
-      }
-    }
-  }
+  // Keep plugin configuration values available to OBJ8 ANIM_show/ANIM_hide
+  // rules, but do not infer attachment kill switches from them. A saved
+  // option such as `seats=0` describes the plugin's last configured loadout;
+  // translating it to `uh60m/kill/seats=1` makes otherwise valid geometry
+  // impossible to inspect in the static viewer. Attachment hide datarefs still
+  // remain available in the Datarefs panel and default to zero (visible).
 
   return {
     name: manifest.name,
