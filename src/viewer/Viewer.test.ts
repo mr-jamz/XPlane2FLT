@@ -5,8 +5,11 @@ import type { AnimationTransform, VisibilityRule } from "../core/types";
 
 describe("previewMaterialSide", () => {
   it("keeps aircraft surfaces visible from interior camera positions", () => {
-    expect(previewMaterialSide(false)).toBe(THREE.DoubleSide);
-    expect(previewMaterialSide(true)).toBe(THREE.DoubleSide);
+    expect(previewMaterialSide(false, "interior")).toBe(THREE.DoubleSide);
+    expect(previewMaterialSide(false, "cockpit")).toBe(THREE.DoubleSide);
+    expect(previewMaterialSide(false, "exterior")).toBe(THREE.FrontSide);
+    expect(previewMaterialSide(false, "glass")).toBe(THREE.FrontSide);
+    expect(previewMaterialSide(true, "exterior")).toBe(THREE.DoubleSide);
   });
 });
 

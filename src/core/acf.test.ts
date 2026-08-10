@@ -46,4 +46,19 @@ P _obja/0/_lighting 0
       role: "exterior",
     });
   });
+
+  it("decodes interior and cockpit roles from Plane Maker object flags", () => {
+    const result = parseAcf("UH60.acf", `I
+1200 Version
+ACF
+P _obja/0/_v10_att_file_stl seats.obj
+P _obja/0/_obj_flags 73
+P _obja/1/_v10_att_file_stl dash-frames.obj
+P _obja/1/_obj_flags 77
+P _obja/2/_v10_att_file_stl exterior.obj
+P _obja/2/_obj_flags 16
+`);
+
+    expect(result.attachments.map(({ role }) => role)).toEqual(["interior", "cockpit", "exterior"]);
+  });
 });

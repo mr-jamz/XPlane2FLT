@@ -11,6 +11,15 @@ function roleFromProperties(properties: Map<string, string>): AttachmentRole {
   if (/glass/.test(joined) || /_lighting\s+2/.test(joined)) return "glass";
   if (/interior|inside|_lighting\s+1/.test(joined)) return "interior";
   if (/exterior|outside|_lighting\s+0/.test(joined)) return "exterior";
+  // Plane Maker encodes an attachment's view/lighting role in _obj_flags.
+  // Bit 2 marks cockpit objects and bit 3 marks interior objects. Aircraft
+  // frequently rely on these flags for generically named meshes such as
+  // seats.obj and pax.obj, so filename-only classification is insufficient.
+  const flags = Number(properties.get("_obj_flags"));
+  if (Number.isInteger(flags)) {
+    if ((flags & 4) !== 0) return "cockpit";
+    if ((flags & 8) !== 0) return "interior";
+  }
   return "unknown";
 }
 

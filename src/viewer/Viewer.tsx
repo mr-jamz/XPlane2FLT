@@ -51,9 +51,13 @@ interface RuntimeHighlight {
 }
 
 // Some aircraft omit ATTR_no_cull on interior shell batches even though those
-// surfaces must remain visible from cabin and cockpit camera positions.
-export function previewMaterialSide(_authoredDoubleSided: boolean): THREE.Side {
-  return THREE.DoubleSide;
+// surfaces must remain visible from cabin and cockpit camera positions. Do not
+// force exterior surfaces two-sided: their back faces can sit in front of and
+// hide the aircraft's actual cabin liner and furnishings.
+export function previewMaterialSide(authoredDoubleSided: boolean, role: AircraftAttachment["role"]): THREE.Side {
+  return authoredDoubleSided || role === "interior" || role === "cockpit"
+    ? THREE.DoubleSide
+    : THREE.FrontSide;
 }
 
 interface LoadProgress {
@@ -326,7 +330,7 @@ export function Viewer(props: ViewerProps) {
               emissiveIntensity: props.night,
               roughness: Math.max(0.05, 1 - shiny),
               metalness: model.normalMetalness ? 0.55 : 0,
-              side: previewMaterialSide(state.doubleSided),
+              side: previewMaterialSide(state.doubleSided, attachment.role),
               transparent: state.blend !== "test",
               alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
               // Plane Maker glass objects are explicitly drawn last. Ordinary
@@ -337,7 +341,7 @@ export function Viewer(props: ViewerProps) {
             });
             const unlitMaterial = new THREE.MeshBasicMaterial({
               color: new THREE.Color(...state.diffuse),
-              side: previewMaterialSide(state.doubleSided),
+              side: previewMaterialSide(state.doubleSided, attachment.role),
               transparent: state.blend !== "test",
               alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
               depthWrite: attachment.role !== "glass",
@@ -371,7 +375,7 @@ export function Viewer(props: ViewerProps) {
             runtimeMeshes.push({ mesh, lit: material, unlit: unlitMaterial });
             const highlightMaterial = new THREE.MeshBasicMaterial({
               color: latest.current.highlightColor,
-              side: previewMaterialSide(state.doubleSided),
+              side: previewMaterialSide(state.doubleSided, attachment.role),
               transparent: true,
               opacity: 0.28,
               depthWrite: false,
