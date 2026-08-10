@@ -23,7 +23,7 @@ import type { LoadedAircraft, Obj8Model, SourceFile } from "./core/types";
 import { Viewer, type ViewMode } from "./viewer/Viewer";
 import { ConversionPanel } from "./ConversionPanel";
 
-const BUILD_VERSION = "v1.0.8";
+const BUILD_VERSION = "v1.0.9";
 const HIGHLIGHT_COLORS = [
   { name: "Red", value: "#ff6b6b" },
   { name: "Orange", value: "#ff9f43" },

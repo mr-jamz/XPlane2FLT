@@ -5,7 +5,7 @@ import { resolveRelative, withoutExtension } from "../core/path";
 
 const TEXTURE_TIMEOUT_MS = 15_000;
 
-function findFile(fileMap: Map<string, File>, ownerPath: string, reference?: string): { path: string; file: File } | null {
+export function findTextureFile(fileMap: Map<string, File>, ownerPath: string, reference?: string): { path: string; file: File } | null {
   if (!reference || reference.toLowerCase() === "none") return null;
   const resolved = resolveRelative(ownerPath, reference);
   const candidates = [
@@ -19,6 +19,20 @@ function findFile(fileMap: Map<string, File>, ownerPath: string, reference?: str
     const file = fileMap.get(candidate.toLowerCase());
     if (file) return { path: candidate, file };
   }
+
+  // Some third-party aircraft keep OBJ files and textures under different
+  // package roots while retaining Plane Maker-relative texture references.
+  // If the normal relative lookup fails, accept a unique path-suffix match.
+  // Requiring uniqueness prevents silently binding a same-named texture from
+  // another livery or object folder.
+  for (const candidate of candidates) {
+    const suffix = candidate.toLowerCase();
+    const basenameSuffix = `/${suffix.split("/").pop()}`;
+    const matches = [...fileMap.entries()].filter(([path]) =>
+      path === suffix || path.endsWith(`/${suffix}`) || path.endsWith(basenameSuffix),
+    );
+    if (matches.length === 1) return { path: matches[0][0], file: matches[0][1] };
+  }
   return null;
 }
 
@@ -28,7 +42,7 @@ export async function loadTexture(
   reference?: string,
   color = false,
 ): Promise<THREE.Texture | null> {
-  const source = findFile(fileMap, ownerPath, reference);
+  const source = findTextureFile(fileMap, ownerPath, reference);
   if (!source) return null;
   const url = URL.createObjectURL(source.file);
   const extension = source.path.split(".").pop()?.toLowerCase();
@@ -63,6 +77,12 @@ export async function loadTexture(
     texture.flipY = extension !== "dds";
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
+    // Compressed DDS textures cannot be flipped during WebGL upload. Apply
+    // the equivalent lower-left OBJ8 V-coordinate transform at sampling time.
+    if (extension === "dds") {
+      texture.repeat.y = -1;
+      texture.offset.y = 1;
+    }
     texture.anisotropy = 8;
     if (color) texture.colorSpace = THREE.SRGBColorSpace;
     texture.needsUpdate = true;
