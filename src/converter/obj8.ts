@@ -1,4 +1,4 @@
-import type { Diagnostic, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
+import type { Diagnostic, Obj8AnimationNode, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
 import { basename } from "./path";
 
 function finiteNumbers(parts: string[], start: number, count: number): number[] | null {
@@ -12,6 +12,8 @@ export function parseObj8(path: string, source: string): Obj8Model {
   const indexTable: number[] = [];
   const triangles: Obj8Triangle[] = [];
   const diagnostics: Diagnostic[] = [];
+  const animationNodes: Obj8AnimationNode[] = [];
+  const animationStack: string[] = [];
   let texturePath: string | undefined;
   let litTexturePath: string | undefined;
   let normalTexturePath: string | undefined;
@@ -25,7 +27,6 @@ export function parseObj8(path: string, source: string): Obj8Model {
     blended: false,
     alphaCutoff: 0.5,
   };
-  let animationDepth = 0;
   let animationWarningAdded = false;
   let lodWarningAdded = false;
 
@@ -94,20 +95,47 @@ export function parseObj8(path: string, source: string): Obj8Model {
       continue;
     }
     if (command === "ANIM_BEGIN") {
-      animationDepth += 1;
+      const id = `anim-${animationNodes.length + 1}`;
+      animationNodes.push({
+        id,
+        parentId: animationStack.at(-1),
+        name: `Anim${String(animationNodes.length + 1).padStart(4, "0")}`,
+        datarefs: [],
+      });
+      animationStack.push(id);
       if (!animationWarningAdded) {
         diagnostics.push({
           severity: "warning",
           code: "OBJ8_ANIMATION_BAKED",
           file: path,
-          message: "Animated geometry is exported in its authored base pose; X-Plane dataref animation is not transferred to OpenFlight.",
+          message: "Animated geometry is exported in its authored base pose and retained as separate OpenFlight hierarchy nodes; X-Plane dataref keyframes are not transferred.",
         });
         animationWarningAdded = true;
       }
       continue;
     }
     if (command === "ANIM_END") {
-      animationDepth = Math.max(0, animationDepth - 1);
+      animationStack.pop();
+      continue;
+    }
+    if (command === "ANIM_ROTATE" || command === "ANIM_ROTATE_BEGIN" || command === "ANIM_TRANS" || command === "ANIM_TRANS_BEGIN" || command === "ANIM_HIDE" || command === "ANIM_SHOW") {
+      const currentId = animationStack.at(-1);
+      const node = currentId ? animationNodes.find((candidate) => candidate.id === currentId) : undefined;
+      if (node) {
+        const dataref = parts.at(-1) ?? "";
+        if (dataref.includes("/") && !node.datarefs.includes(dataref)) node.datarefs.push(dataref);
+
+        const lower = `${dataref} ${parts.slice(1).join(" ")}`.toLowerCase();
+        if (/tail[_ /-]*rotor|rotor[_ /-]*tail/.test(lower)) node.name = "TailRotor";
+        else if (/main[_ /-]*rotor|rotor[_ /-]*main/.test(lower)) node.name = "MainRotor";
+        else if (/rotor|prop_rotation|prop_angle/.test(lower) && command.startsWith("ANIM_ROTATE")) {
+          const axis = finiteNumbers(parts, 1, 3);
+          if (axis) {
+            const absolute = axis.map(Math.abs);
+            node.name = absolute[1] >= absolute[0] && absolute[1] >= absolute[2] ? "MainRotor" : "TailRotor";
+          }
+        }
+      }
       continue;
     }
     if ((command === "ATTR_LOD" || command === "LOD") && !lodWarningAdded) {
@@ -179,6 +207,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
           indices: [a, b, c],
           doubleSided,
           drawEnabled,
+          animationNodeId: animationStack.at(-1),
           material: {
             ...material,
             diffuse: [...material.diffuse],
@@ -189,7 +218,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
     }
   }
 
-  if (animationDepth !== 0) {
+  if (animationStack.length !== 0) {
     diagnostics.push({
       severity: "warning",
       code: "OBJ8_UNBALANCED_ANIMATION",
@@ -214,6 +243,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
     normalTexturePath,
     vertices,
     triangles,
+    animationNodes,
     diagnostics,
   };
 }

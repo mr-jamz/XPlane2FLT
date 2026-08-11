@@ -21,7 +21,9 @@ function materialKey(triangle: Obj8Triangle): string {
 }
 
 function triangleStateKey(triangle: Obj8Triangle): string {
-  return `${triangle.doubleSided ? 1 : 0}|${materialKey(triangle)}`;
+  // Animation scope is geometry state: coincident faces in different scopes
+  // must never be welded, deduplicated, or otherwise merged together.
+  return `${triangle.animationNodeId ?? "static"}|${triangle.doubleSided ? 1 : 0}|${materialKey(triangle)}`;
 }
 
 function areaSquared(a: Obj8Vertex, b: Obj8Vertex, c: Obj8Vertex): number {

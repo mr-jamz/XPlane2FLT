@@ -15,7 +15,7 @@ function grid(path: string, width: number, height: number): Obj8Model {
     triangles.push({ indices: [a, b, d] as [number, number, number], doubleSided: false });
     triangles.push({ indices: [a, d, c] as [number, number, number], doubleSided: false });
   }
-  return { path, name: path, vertices, triangles, diagnostics: [] };
+  return { path, name: path, vertices, triangles, animationNodes: [], diagnostics: [] };
 }
 
 const options: GeometryOptimizationOptions = {

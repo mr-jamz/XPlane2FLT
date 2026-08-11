@@ -257,14 +257,54 @@ function writeVertexList(writer: BigEndianWriter, offsets: [number, number, numb
 function push(writer: BigEndianWriter): void { recordHeader(writer, 10, 4); }
 function pop(writer: BigEndianWriter): void { recordHeader(writer, 11, 4); }
 
+interface GeometryNode {
+  id: string;
+  name: string;
+  triangles: Obj8Triangle[];
+  children: GeometryNode[];
+}
+
+function fltId(value: string, fallback: string): string {
+  if (value === "MainRotor") return "MAINROTR";
+  if (value === "TailRotor") return "TAILROTR";
+  const cleaned = value.replace(/[^a-zA-Z0-9_-]+/g, "").slice(0, 8);
+  return cleaned || fallback.slice(0, 8);
+}
+
+function geometryTree(model: Obj8Model): GeometryNode {
+  const root: GeometryNode = { id: "root", name: "Static", triangles: [], children: [] };
+  const byId = new Map<string, GeometryNode>();
+  for (const source of model.animationNodes) {
+    const node: GeometryNode = { id: source.id, name: source.name, triangles: [], children: [] };
+    byId.set(source.id, node);
+    (source.parentId ? byId.get(source.parentId) : root)?.children.push(node);
+  }
+  for (const triangle of model.triangles) {
+    (triangle.animationNodeId ? byId.get(triangle.animationNodeId) : root)?.triangles.push(triangle);
+  }
+  return root;
+}
+
+function countGeometryObjects(node: GeometryNode): number {
+  return (node.triangles.length > 0 ? 1 : 0) + node.children.reduce((sum, child) => sum + countGeometryObjects(child), 0);
+}
+
+function countAnimationGroups(node: GeometryNode): number {
+  return node.children.length + node.children.reduce((sum, child) => sum + countAnimationGroups(child), 0);
+}
+
 export function buildOpenFlight(input: BuildInput): Uint8Array {
   const vertexCount = input.models.reduce((sum, model) => sum + model.vertices.length, 0);
   const triangleCount = input.models.reduce((sum, model) => sum + model.triangles.length, 0);
-  const populatedObjectCount = input.models.filter((model) => model.triangles.length > 0).length;
+  const trees = input.models.map(geometryTree);
+  const populatedObjectCount = trees.reduce((sum, tree) => sum + countGeometryObjects(tree), 0);
+  const modelGroupCount = input.models.filter((model) => model.triangles.length > 0).length;
+  const animationGroupCount = trees.reduce((sum, tree) => sum + countAnimationGroups(tree), 0);
   const materialPalette = collectMaterials(input.models);
   const vertexPaletteLength = VERTEX_PALETTE_HEADER_LENGTH + vertexCount * VERTEX_RECORD_LENGTH;
   const outputSize = HEADER_LENGTH + input.textures.length * 216 + materialPalette.materials.length * MATERIAL_PALETTE_LENGTH + vertexPaletteLength
     + 4 + GROUP_LENGTH + 4
+    + (modelGroupCount + animationGroupCount) * (GROUP_LENGTH + 4 + 4)
     + populatedObjectCount * (OBJECT_LENGTH + 4 + 4)
     + triangleCount * (FACE_LENGTH + 4 + VERTEX_LIST_LENGTH + 4)
     + 4 + 4;
@@ -291,26 +331,40 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
   push(writer);
 
   let faceNumber = 1;
-  for (let objectIndex = 0; objectIndex < input.models.length; objectIndex += 1) {
-    const model = input.models[objectIndex];
-    if (model.triangles.length === 0) continue;
-    const textureIndex = model.texturePath ? textureBySource.get(model.texturePath.toLowerCase()) ?? -1 : -1;
-    writeObject(writer, `OBJ${String(objectIndex + 1).padStart(4, "0")}`.slice(0, 7));
+  const writeGeometryObject = (objectId: string, triangles: Obj8Triangle[], objectIndex: number, textureIndex: number) => {
+    if (triangles.length === 0) return;
+    writeObject(writer, fltId(objectId, "GEOMETRY"));
     push(writer);
-    for (const triangle of model.triangles) {
+    for (const triangle of triangles) {
       const materialIndex = materialPalette.indices.get(materialKey(normalizedMaterial(triangle))) ?? -1;
       writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, materialIndex, triangle);
       push(writer);
       const base = modelVertexBaseOffsets[objectIndex];
       const indices = openFlightTriangleIndices(triangle, input.coordinateMode);
-      writeVertexList(writer, [
-        base + indices[0] * VERTEX_RECORD_LENGTH,
-        base + indices[1] * VERTEX_RECORD_LENGTH,
-        base + indices[2] * VERTEX_RECORD_LENGTH,
-      ]);
+      writeVertexList(writer, indices.map((index) => base + index * VERTEX_RECORD_LENGTH) as [number, number, number]);
       pop(writer);
       faceNumber += 1;
     }
+    pop(writer);
+  };
+
+  const writeAnimationNode = (node: GeometryNode, objectIndex: number, textureIndex: number) => {
+    writeGroup(writer, fltId(node.name, "ANIM"));
+    push(writer);
+    writeGeometryObject("GEOMETRY", node.triangles, objectIndex, textureIndex);
+    for (const child of node.children) writeAnimationNode(child, objectIndex, textureIndex);
+    pop(writer);
+  };
+
+  for (let objectIndex = 0; objectIndex < input.models.length; objectIndex += 1) {
+    const model = input.models[objectIndex];
+    if (model.triangles.length === 0) continue;
+    const textureIndex = model.texturePath ? textureBySource.get(model.texturePath.toLowerCase()) ?? -1 : -1;
+    const tree = trees[objectIndex];
+    writeGroup(writer, fltId(model.name.replace(/\.obj$/i, ""), `OBJ${objectIndex + 1}`));
+    push(writer);
+    writeGeometryObject("Static", tree.triangles, objectIndex, textureIndex);
+    for (const child of tree.children) writeAnimationNode(child, objectIndex, textureIndex);
     pop(writer);
   }
 
