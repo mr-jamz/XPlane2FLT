@@ -7,7 +7,6 @@ import {
   Eye,
   EyeOff,
   FileArchive,
-  FolderOpen,
   Layers3,
   Moon,
   PaintBucket,
@@ -18,12 +17,12 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { filesFromDrop, filesFromList, loadAircraft } from "./core/files";
+import { filesFromList, loadAircraft } from "./core/files";
 import type { LoadedAircraft, Obj8Model, SourceFile } from "./core/types";
 import { Viewer, type ViewMode } from "./viewer/Viewer";
 import { ConversionPanel } from "./ConversionPanel";
 
-const BUILD_VERSION = "v1.0.10";
+const BUILD_VERSION = "v1.0.12";
 const HIGHLIGHT_COLORS = [
   { name: "Red", value: "#ff6b6b" },
   { name: "Orange", value: "#ff9f43" },
@@ -71,8 +70,7 @@ function modelLabel(model: Obj8Model): string {
   return model.path.split("/").pop()?.replace(/\.obj$/i, "") ?? model.name;
 }
 
-function EmptyState({ onSources, busy, error }: { onSources: (files: SourceFile[]) => void; busy: boolean; error: string | null }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+function EmptyState({ onZip, busy, error }: { onZip: (files: FileList | File[]) => void; busy: boolean; error: string | null }) {
   const zipRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -87,8 +85,7 @@ function EmptyState({ onSources, busy, error }: { onSources: (files: SourceFile[
       onDrop={async (event) => {
         event.preventDefault();
         setDragging(false);
-        const sources = await filesFromDrop(event.dataTransfer);
-        onSources(sources);
+        onZip(event.dataTransfer.files);
       }}
     >
       <header className="brand-header">
@@ -106,30 +103,19 @@ function EmptyState({ onSources, busy, error }: { onSources: (files: SourceFile[
           <div className="radar-ring ring-two" />
           <Plane size={58} strokeWidth={1.25} />
         </div>
-        <p className="eyebrow">AIRCRAFT FOLDER INPUT</p>
+        <p className="eyebrow">AIRCRAFT ZIP INPUT</p>
         <h1>View and convert<br />X‑Plane 12 aircraft.</h1>
         <p className="drop-copy">
-          Drop a complete aircraft folder or ZIP to inspect its authored scene, select objects,
+          Drop a complete aircraft ZIP to inspect its authored scene, select objects,
           and export a ModelConverterX-compatible OpenFlight package.
         </p>
         <div className="drop-actions">
-          <button type="button" className="primary-button" disabled={busy} onClick={() => inputRef.current?.click()}>
-            <FolderOpen size={18} /> {busy ? "Reading aircraft…" : "Choose aircraft folder"}
-          </button>
-          <button type="button" className="secondary-button" disabled={busy} onClick={() => zipRef.current?.click()}>
-            <FileArchive size={18} /> Open ZIP
+          <button type="button" className="primary-button" disabled={busy} onClick={() => zipRef.current?.click()}>
+            <FileArchive size={18} /> {busy ? "Reading aircraft…" : "Open aircraft ZIP"}
           </button>
         </div>
-        <input
-          ref={inputRef}
-          hidden
-          type="file"
-          multiple
-          {...({ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>)}
-          onChange={async (event) => event.target.files && onSources(await filesFromList(event.target.files))}
-        />
-        <input ref={zipRef} hidden type="file" accept=".zip" onChange={async (event) => event.target.files && onSources(await filesFromList(event.target.files))} />
-        <div className="drop-hint"><Upload size={15} /> Or drag the folder or ZIP anywhere onto this page</div>
+        <input ref={zipRef} hidden type="file" accept=".zip,application/zip" onChange={(event) => event.target.files && onZip(event.target.files)} />
+        <div className="drop-hint"><Upload size={15} /> Or drag one aircraft ZIP anywhere onto this page</div>
         {error && <div className="load-error"><CircleAlert size={17} /> {error}</div>}
       </section>
 
@@ -183,6 +169,20 @@ export default function App() {
     }
   };
 
+  const openZip = async (files: FileList | File[]) => {
+    const selected = [...files];
+    if (selected.length !== 1 || !/\.zip$/i.test(selected[0].name)) {
+      setError("Choose or drop exactly one .zip aircraft package.");
+      return;
+    }
+    setError(null);
+    try {
+      await openSources(await filesFromList(selected));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The ZIP could not be read.");
+    }
+  };
+
   const ranges = useMemo(() => aircraft ? datarefRanges(aircraft) : new Map(), [aircraft]);
   const selected = aircraft?.models.find((model) => model.path === selectedPath) ?? null;
   const filteredModels = aircraft?.models.filter((model) => model.path.toLowerCase().includes(query.toLowerCase())) ?? [];
@@ -190,7 +190,7 @@ export default function App() {
     ? [...aircraft.manifest.warnings, ...aircraft.models.flatMap((model) => model.warnings.map((warning) => `${model.name}: ${warning}`))]
     : [];
 
-  if (!aircraft) return <EmptyState onSources={openSources} busy={busy} error={error} />;
+  if (!aircraft) return <EmptyState onZip={openZip} busy={busy} error={error} />;
 
   return (
     <main
@@ -203,10 +203,10 @@ export default function App() {
       onDrop={async (event) => {
         event.preventDefault();
         setDragging(false);
-        await openSources(await filesFromDrop(event.dataTransfer));
+        await openZip(event.dataTransfer.files);
       }}
     >
-      <div className="drop-overlay"><Upload size={30} /><strong>Load another aircraft</strong><span>Drop folder or ZIP</span></div>
+      <div className="drop-overlay"><Upload size={30} /><strong>Load another aircraft</strong><span>Drop one aircraft ZIP</span></div>
       <header className="app-header">
         <div className="brand-compact">
           <div className="brand-mark"><Plane size={19} /></div>
