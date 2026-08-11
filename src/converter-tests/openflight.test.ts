@@ -15,21 +15,6 @@ function recordOpcodes(bytes: Uint8Array): number[] {
   return opcodes;
 }
 
-function hierarchyNames(bytes: Uint8Array): string[] {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const names: string[] = [];
-  let offset = 0;
-  while (offset + 4 <= bytes.byteLength) {
-    const opcode = view.getUint16(offset, false);
-    const length = view.getUint16(offset + 2, false);
-    if (opcode === 2 || opcode === 4) {
-      names.push(String.fromCharCode(...bytes.subarray(offset + 4, offset + 12)).replace(/\0+$/, ""));
-    }
-    offset += opcode === 67 ? view.getInt32(offset + 4, false) : length;
-  }
-  return names;
-}
-
 describe("OpenFlight writer", () => {
   it("reverses winding exactly once for Z-up OpenFlight output", () => {
     const triangle = {
@@ -104,31 +89,8 @@ describe("OpenFlight writer", () => {
     expect(opcodes).not.toContain(85);
     expect(opcodes).not.toContain(86);
     expect(opcodes.indexOf(10)).toBeLessThan(opcodes.indexOf(2));
-    expect(opcodes.filter((opcode) => opcode === 10)).toHaveLength(5);
-    expect(opcodes.filter((opcode) => opcode === 11)).toHaveLength(5);
-  });
-
-  it("writes separate OpenFlight hierarchy nodes for separate OBJ8 animation scopes", () => {
-    const model = parseObj8("objects/rotors.obj", `I
-800
-OBJ
-VT 0 0 0 0 1 0 0 0
-VT 1 0 0 0 1 0 1 0
-VT 0 1 0 0 1 0 0 1
-IDX 0 1 2
-ANIM_begin
-ANIM_rotate 0 1 0 0 360 0 1 sim/flightmodel2/engines/prop_rotation_angle_deg[0]
-TRIS 0 3
-ANIM_end
-ANIM_begin
-ANIM_rotate 0 0 1 0 360 0 1 sim/flightmodel2/engines/prop_rotation_angle_deg[1]
-TRIS 0 3
-ANIM_end`);
-    const bytes = buildOpenFlight({ models: [model], textures: [], coordinateMode: "keep-xplane" });
-
-    expect(hierarchyNames(bytes)).toEqual(expect.arrayContaining(["rotors", "MAINROTR", "TAILROTR"]));
-    expect(recordOpcodes(bytes).filter((opcode) => opcode === 4)).toHaveLength(2);
-    expect(validateOpenFlight(bytes)).toEqual([]);
+    expect(opcodes.filter((opcode) => opcode === 10)).toHaveLength(4);
+    expect(opcodes.filter((opcode) => opcode === 11)).toHaveLength(4);
   });
 
   it("writes a white texture-modulating material and preserves X-Plane surface state", () => {

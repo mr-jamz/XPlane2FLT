@@ -296,13 +296,6 @@ export async function convertArchive(
           triangles: model.triangles.length,
           originalTriangles: selectedModels[index].triangles.length,
           diffuseTexture: model.texturePath ?? null,
-          hierarchy: model.animationNodes.map((node) => ({
-            id: node.id,
-            parentId: node.parentId ?? null,
-            name: node.name,
-            datarefs: node.datarefs,
-            triangles: model.triangles.filter((triangle) => triangle.animationNodeId === node.id).length,
-          })),
         })),
         copiedTextures: textureReport,
         diagnostics: [...inspection.diagnostics, ...optimized.diagnostics],

@@ -61,25 +61,4 @@ TRIS 0 3`);
     expect(model.triangles).toHaveLength(0);
     expect(model.diagnostics.some((item) => item.code === "OBJ8_INDEX_OUT_OF_RANGE")).toBe(true);
   });
-
-  it("preserves nested animation scopes and identifies independent rotor geometry", () => {
-    const model = parseObj8("objects/rotors.obj", `I
-800
-OBJ
-VT 0 0 0 0 1 0 0 0
-VT 1 0 0 0 1 0 1 0
-VT 0 1 0 0 1 0 0 1
-IDX 0 1 2
-ANIM_begin
-ANIM_rotate 0 1 0 0 360 0 1 sim/flightmodel2/engines/prop_rotation_angle_deg[0]
-TRIS 0 3
-ANIM_end
-ANIM_begin
-ANIM_rotate 0 0 1 0 360 0 1 sim/flightmodel2/engines/prop_rotation_angle_deg[1]
-TRIS 0 3
-ANIM_end`);
-
-    expect(model.animationNodes.map((node) => node.name)).toEqual(["MainRotor", "TailRotor"]);
-    expect(model.triangles.map((triangle) => triangle.animationNodeId)).toEqual(["anim-1", "anim-2"]);
-  });
 });

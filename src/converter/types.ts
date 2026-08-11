@@ -18,15 +18,6 @@ export interface Obj8Triangle {
   doubleSided: boolean;
   drawEnabled?: boolean;
   material?: Obj8MaterialState;
-  /** Deepest OBJ8 ANIM_begin scope containing this triangle. */
-  animationNodeId?: string;
-}
-
-export interface Obj8AnimationNode {
-  id: string;
-  parentId?: string;
-  name: string;
-  datarefs: string[];
 }
 
 export interface Obj8MaterialState {
@@ -46,7 +37,6 @@ export interface Obj8Model {
   normalTexturePath?: string;
   vertices: Obj8Vertex[];
   triangles: Obj8Triangle[];
-  animationNodes: Obj8AnimationNode[];
   diagnostics: Diagnostic[];
 }
 
