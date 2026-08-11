@@ -8,12 +8,10 @@ import {
   EyeOff,
   FileArchive,
   Layers3,
-  Moon,
   PaintBucket,
   Plane,
   Search,
   SlidersHorizontal,
-  Sun,
   Upload,
   X,
 } from "lucide-react";
@@ -22,7 +20,7 @@ import type { LoadedAircraft, Obj8Model, SourceFile } from "./core/types";
 import { Viewer, type ViewMode } from "./viewer/Viewer";
 import { ConversionPanel } from "./ConversionPanel";
 
-const BUILD_VERSION = "v1.0.12";
+const BUILD_VERSION = "v1.0.13";
 const HIGHLIGHT_COLORS = [
   { name: "Red", value: "#ff6b6b" },
   { name: "Orange", value: "#ff9f43" },
@@ -137,11 +135,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [datarefs, setDatarefs] = useState<Record<string, number>>({});
-  const [night, setNight] = useState(0.08);
   const [lodDistance, setLodDistance] = useState(0);
   const [wireframe, setWireframe] = useState(false);
   const [lightsEnabled, setLightsEnabled] = useState(true);
-  const [unlit, setUnlit] = useState(true);
   const [rightTab, setRightTab] = useState<"scene" | "datarefs" | "export">("scene");
   const [highlightColor, setHighlightColor] = useState(() => localStorage.getItem("xplane2flt-highlight-color") ?? HIGHLIGHT_COLORS[0].value);
   const [dragging, setDragging] = useState(false);
@@ -160,7 +156,6 @@ export default function App() {
       // discovered dataref with zero posed unrelated rotor, door, cockpit,
       // and equipment groups into their numeric-zero animation states.
       setDatarefs({ ...loaded.defaultDatarefs });
-      setUnlit(true);
       setSelectedPath(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The aircraft could not be loaded.");
@@ -302,11 +297,9 @@ export default function App() {
           visiblePaths={visible}
           viewMode={viewMode}
           datarefs={datarefs}
-          night={night}
           lodDistance={lodDistance}
           wireframe={wireframe}
           lightsEnabled={lightsEnabled}
-          unlit={unlit}
           selectedPath={selectedPath}
           highlightColor={highlightColor}
           onSelect={setSelectedPath}
@@ -322,14 +315,6 @@ export default function App() {
 
         {rightTab === "scene" ? (
           <div className="inspector-scroll">
-            <section className="control-section">
-              <p className="eyebrow">LIGHTING</p>
-              <label className="toggle-row"><span><strong>Flat / unlit textures</strong><small>Display texture colors without scene lighting</small></span><input type="checkbox" checked={unlit} onChange={(event) => setUnlit(event.target.checked)} /><i /></label>
-              <div className="range-label"><Sun size={16} /><span>Day / night mix</span><Moon size={15} /></div>
-              <input className="range" type="range" min="0" max="1" step="0.01" value={night} disabled={unlit} onChange={(event) => setNight(Number(event.target.value))} />
-              <div className="range-scale"><span>Day</span><strong>{Math.round(night * 100)}%</strong><span>Night</span></div>
-              {unlit && <p className="field-help">Day/night lighting is available in Lit mode.</p>}
-            </section>
             <section className="control-section">
               <p className="eyebrow">LEVEL OF DETAIL</p>
               <div className="range-label"><span>Camera distance</span><strong>{lodDistance.toLocaleString()} m</strong></div>

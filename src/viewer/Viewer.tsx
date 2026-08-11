@@ -12,11 +12,9 @@ interface ViewerProps {
   visiblePaths: Set<string>;
   viewMode: ViewMode;
   datarefs: Record<string, number>;
-  night: number;
   lodDistance: number;
   wireframe: boolean;
   lightsEnabled: boolean;
-  unlit: boolean;
   selectedPath: string | null;
   highlightColor: string;
   onSelect: (path: string | null) => void;
@@ -36,12 +34,6 @@ interface RuntimeModel {
 interface RuntimeAttachment {
   object: THREE.Group;
   hideDataref?: string;
-}
-
-interface RuntimeMesh {
-  mesh: THREE.Mesh;
-  lit: THREE.MeshStandardMaterial;
-  unlit: THREE.MeshBasicMaterial;
 }
 
 interface RuntimeHighlight {
@@ -195,8 +187,7 @@ export function Viewer(props: ViewerProps) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = false;
     host.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -207,14 +198,6 @@ export function Viewer(props: ViewerProps) {
 
     const root = new THREE.Group();
     scene.add(root);
-    scene.add(new THREE.HemisphereLight(0xb9d9d4, 0x19221f, 1.75));
-    const sun = new THREE.DirectionalLight(0xfff2d6, 4.2);
-    sun.position.set(-35, 55, 28);
-    sun.castShadow = true;
-    scene.add(sun);
-    const fill = new THREE.DirectionalLight(0x7fc8c0, 1.2);
-    fill.position.set(28, 12, -38);
-    scene.add(fill);
     const ground = new THREE.GridHelper(2_000, 100, 0x4c685f, 0x182723);
     (ground.material as THREE.Material).transparent = true;
     (ground.material as THREE.Material).opacity = 0.34;
@@ -229,9 +212,7 @@ export function Viewer(props: ViewerProps) {
     const runtimeGroups: RuntimeGroup[] = [];
     const runtimeModels: RuntimeModel[] = [];
     const runtimeAttachments: RuntimeAttachment[] = [];
-    const runtimeMeshes: RuntimeMesh[] = [];
     const runtimeHighlights: RuntimeHighlight[] = [];
-    const litMaterials: Array<{ material: THREE.MeshStandardMaterial; base: number; lightLevel?: { min: number; max: number; dataref: string } }> = [];
 
     const fitCamera = () => {
       const box = new THREE.Box3().setFromObject(root);
@@ -273,21 +254,14 @@ export function Viewer(props: ViewerProps) {
       });
 
       for (const [modelIndex, model] of props.aircraft.models.entries()) {
-        const modelMaterials: THREE.MeshStandardMaterial[] = [];
-        const modelUnlitMaterials: THREE.MeshBasicMaterial[] = [];
+        const modelMaterials: THREE.MeshBasicMaterial[] = [];
         const modelRoot = new THREE.Group();
         modelRoot.name = model.name;
         modelRoot.userData.modelPath = model.path;
         modelRoot.visible = latest.current.visiblePaths.has(model.path);
         root.add(modelRoot);
         runtimeModels.push({ object: modelRoot, path: model.path });
-        const textureTask = Promise.all([
-          getTexture(model, model.texture, true),
-          getTexture(model, model.textureLit, true),
-          getTexture(model, model.textureNormal, false),
-          getTexture(model, model.textureMaps.normal, false),
-          getTexture(model, model.textureMaps.material_gloss ?? model.textureMaps.gloss, false),
-        ]);
+        const textureTask = getTexture(model, model.texture, true);
 
         for (const attachment of modelAttachments(props.aircraft, model)) {
           if (!attachmentVisible(attachment, props.viewMode)) continue;
@@ -323,23 +297,7 @@ export function Viewer(props: ViewerProps) {
             const geometry = makeGeometry(model, batch.indices);
             resources.push(geometry);
             const state = batch.material;
-            const shiny = Math.max(model.globalSpecular, state.shinyRatio);
-            const material = new THREE.MeshStandardMaterial({
-              color: new THREE.Color(...state.diffuse),
-              emissive: new THREE.Color(...state.emissive),
-              emissiveIntensity: props.night,
-              roughness: Math.max(0.05, 1 - shiny),
-              metalness: model.normalMetalness ? 0.55 : 0,
-              side: previewMaterialSide(state.doubleSided, attachment.role),
-              transparent: state.blend !== "test",
-              alphaTest: state.blend === "test" ? state.alphaCutoff : 0,
-              // Plane Maker glass objects are explicitly drawn last. Ordinary
-              // blended aircraft batches still write depth in authored order.
-              depthWrite: attachment.role !== "glass",
-              depthTest: state.depthTest,
-              wireframe: props.wireframe,
-            });
-            const unlitMaterial = new THREE.MeshBasicMaterial({
+            const material = new THREE.MeshBasicMaterial({
               color: new THREE.Color(...state.diffuse),
               side: previewMaterialSide(state.doubleSided, attachment.role),
               transparent: state.blend !== "test",
@@ -348,31 +306,16 @@ export function Viewer(props: ViewerProps) {
               depthTest: state.depthTest,
               wireframe: props.wireframe,
             });
-            if (model.textureMaps.material_gloss || model.textureMaps.gloss) {
-              material.onBeforeCompile = (shader) => {
-                shader.fragmentShader = shader.fragmentShader.replace(
-                  "roughnessFactor *= texelRoughness.g;",
-                  "roughnessFactor *= (1.0 - texelRoughness.g);",
-                );
-              };
-              material.customProgramCacheKey = () => "xplane-gloss-inversion-v1";
-            }
-            material.normalScale.set(1, -1);
             material.userData.modelPath = model.path;
-            unlitMaterial.userData.modelPath = model.path;
             resources.push(material);
-            resources.push(unlitMaterial);
             modelMaterials.push(material);
-            modelUnlitMaterials.push(unlitMaterial);
-            litMaterials.push({ material, base: model.luminance ? Math.max(0.1, model.luminance / 1000) : 1, lightLevel: state.lightLevel });
 
-            const mesh = new THREE.Mesh(geometry, latest.current.unlit ? unlitMaterial : material);
+            const mesh = new THREE.Mesh(geometry, material);
             mesh.name = model.name;
             mesh.userData.modelPath = model.path;
-            mesh.castShadow = attachment.role !== "glass";
-            mesh.receiveShadow = attachment.role !== "glass";
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
             mesh.renderOrder = attachment.role === "glass" ? 1000 + attachment.index : batch.line;
-            runtimeMeshes.push({ mesh, lit: material, unlit: unlitMaterial });
             const highlightMaterial = new THREE.MeshBasicMaterial({
               color: latest.current.highlightColor,
               side: previewMaterialSide(state.doubleSided, attachment.role),
@@ -417,8 +360,8 @@ export function Viewer(props: ViewerProps) {
 
         // Geometry is usable immediately. Texture hydration continues in the
         // background and cannot block the next OBJ8 object from being assembled.
-        void textureTask.then(([map, emissiveMap, normalMap, xp12NormalMap, glossMap]) => {
-          const textures = [map, emissiveMap, normalMap, xp12NormalMap, glossMap];
+        void textureTask.then((map) => {
+          const textures = [map];
           if (disposed) {
             textures.forEach((texture) => texture?.dispose());
             return;
@@ -427,15 +370,6 @@ export function Viewer(props: ViewerProps) {
             if (texture && !resources.includes(texture)) resources.push(texture);
           });
           for (const material of modelMaterials) {
-            material.map = map;
-            material.emissiveMap = emissiveMap;
-            if (emissiveMap) material.emissive.setRGB(1, 1, 1);
-            material.normalMap = xp12NormalMap ?? normalMap;
-            material.roughnessMap = glossMap;
-            material.metalnessMap = model.normalMetalness ? (normalMap ?? glossMap) : null;
-            material.needsUpdate = true;
-          }
-          for (const material of modelUnlitMaterials) {
             material.map = map;
             material.needsUpdate = true;
           }
@@ -503,23 +437,9 @@ export function Viewer(props: ViewerProps) {
         attachment.object.visible = !attachment.hideDataref
           || (current.datarefs[attachment.hideDataref] ?? 0) < 0.5;
       }
-      for (const entry of runtimeMeshes) {
-        entry.mesh.material = current.unlit ? entry.unlit : entry.lit;
-        entry.mesh.castShadow = !current.unlit;
-        entry.mesh.receiveShadow = !current.unlit;
-      }
       for (const entry of runtimeHighlights) {
         entry.mesh.visible = current.selectedPath === entry.path && current.visiblePaths.has(entry.path);
         entry.material.color.set(current.highlightColor);
-      }
-      for (const entry of litMaterials) {
-        let level = current.night;
-        if (entry.lightLevel) {
-          const value = current.datarefs[entry.lightLevel.dataref] ?? 0;
-          const span = entry.lightLevel.max - entry.lightLevel.min;
-          level = span === 0 ? 0 : THREE.MathUtils.clamp((value - entry.lightLevel.min) / span, 0, 1);
-        }
-        entry.material.emissiveIntensity = entry.base * level;
       }
       controls.update();
       renderer.render(scene, camera);
