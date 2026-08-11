@@ -257,6 +257,22 @@ function writeVertexList(writer: BigEndianWriter, offsets: [number, number, numb
 function push(writer: BigEndianWriter): void { recordHeader(writer, 10, 4); }
 function pop(writer: BigEndianWriter): void { recordHeader(writer, 11, 4); }
 
+function sourceObjectIds(models: Obj8Model[]): string[] {
+  const used = new Set<string>();
+  return models.map((model, index) => {
+    const filename = model.path.split(/[\\/]/).pop() ?? model.name;
+    const stem = filename.replace(/\.[^.]+$/, "");
+    const base = stem.replace(/[^a-zA-Z0-9_-]+/g, "").slice(0, 8) || `OBJ${String(index + 1).padStart(4, "0")}`;
+    let id = base;
+    for (let suffix = 2; used.has(id.toLowerCase()); suffix += 1) {
+      const ending = String(suffix);
+      id = `${base.slice(0, 8 - ending.length)}${ending}`;
+    }
+    used.add(id.toLowerCase());
+    return id;
+  });
+}
+
 export function buildOpenFlight(input: BuildInput): Uint8Array {
   const vertexCount = input.models.reduce((sum, model) => sum + model.vertices.length, 0);
   const triangleCount = input.models.reduce((sum, model) => sum + model.triangles.length, 0);
@@ -265,13 +281,14 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
   const vertexPaletteLength = VERTEX_PALETTE_HEADER_LENGTH + vertexCount * VERTEX_RECORD_LENGTH;
   const outputSize = HEADER_LENGTH + input.textures.length * 216 + materialPalette.materials.length * MATERIAL_PALETTE_LENGTH + vertexPaletteLength
     + 4 + GROUP_LENGTH + 4
-    + populatedObjectCount * (OBJECT_LENGTH + 4 + 4)
+    + populatedObjectCount * (GROUP_LENGTH + 4 + OBJECT_LENGTH + 4 + 4 + 4)
     + triangleCount * (FACE_LENGTH + 4 + VERTEX_LIST_LENGTH + 4)
     + 4 + 4;
   if (!Number.isSafeInteger(outputSize) || outputSize > 1_500_000_000) throw new Error("The selected objects exceed the safe browser export size. Select fewer OBJ8 meshes and try again.");
 
   const writer = new BigEndianWriter(outputSize);
   const textureBySource = new Map(input.textures.map((texture) => [texture.sourcePath.toLowerCase(), texture.index]));
+  const objectIds = sourceObjectIds(input.models);
   const modelVertexBaseOffsets: number[] = [];
   let cumulativeVertices = 0;
   for (const model of input.models) {
@@ -295,7 +312,11 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
     const model = input.models[objectIndex];
     if (model.triangles.length === 0) continue;
     const textureIndex = model.texturePath ? textureBySource.get(model.texturePath.toLowerCase()) ?? -1 : -1;
-    writeObject(writer, `OBJ${String(objectIndex + 1).padStart(4, "0")}`.slice(0, 7));
+    // A source OBJ owns one independent FLT group. Never batch or merge
+    // geometry across this boundary, even when textures/materials match.
+    writeGroup(writer, objectIds[objectIndex]);
+    push(writer);
+    writeObject(writer, "GEOMETRY");
     push(writer);
     for (const triangle of model.triangles) {
       const materialIndex = materialPalette.indices.get(materialKey(normalizedMaterial(triangle))) ?? -1;
@@ -311,6 +332,7 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
       pop(writer);
       faceNumber += 1;
     }
+    pop(writer);
     pop(writer);
   }
 

@@ -15,6 +15,20 @@ function recordOpcodes(bytes: Uint8Array): number[] {
   return opcodes;
 }
 
+function recordIds(bytes: Uint8Array, wantedOpcode: number): string[] {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const decoder = new TextDecoder();
+  const ids: string[] = [];
+  let offset = 0;
+  while (offset + 4 <= bytes.byteLength) {
+    const opcode = view.getUint16(offset, false);
+    const length = view.getUint16(offset + 2, false);
+    if (opcode === wantedOpcode) ids.push(decoder.decode(bytes.subarray(offset + 4, offset + 12)).replace(/\0+$/, ""));
+    offset += opcode === 67 ? view.getInt32(offset + 4, false) : length;
+  }
+  return ids;
+}
+
 describe("OpenFlight writer", () => {
   it("reverses winding exactly once for Z-up OpenFlight output", () => {
     const triangle = {
@@ -89,8 +103,35 @@ describe("OpenFlight writer", () => {
     expect(opcodes).not.toContain(85);
     expect(opcodes).not.toContain(86);
     expect(opcodes.indexOf(10)).toBeLessThan(opcodes.indexOf(2));
-    expect(opcodes.filter((opcode) => opcode === 10)).toHaveLength(4);
-    expect(opcodes.filter((opcode) => opcode === 11)).toHaveLength(4);
+    expect(opcodes.filter((opcode) => opcode === 10)).toHaveLength(5);
+    expect(opcodes.filter((opcode) => opcode === 11)).toHaveLength(5);
+  });
+
+  it("preserves every source OBJ as its own named hierarchy group", () => {
+    const source = `I\n800\nOBJ\nVT 0 0 0 0 1 0 0 0\nVT 1 0 0 0 1 0 1 0\nVT 0 1 0 0 1 0 0 1\nIDX 0 1 2\nTRIS 0 3`;
+    const models = [
+      parseObj8("objects/fuselage.obj", source),
+      parseObj8("objects/main_rotor.obj", source),
+      parseObj8("objects/tail_rotor.obj", source),
+    ];
+    const bytes = buildOpenFlight({ models, textures: [], coordinateMode: "keep-xplane" });
+
+    expect(recordIds(bytes, 2)).toEqual(["AIRCRFT", "fuselage", "main_rot", "tail_rot"]);
+    expect(recordIds(bytes, 4)).toEqual(["GEOMETRY", "GEOMETRY", "GEOMETRY"]);
+    expect(validateOpenFlight(bytes)).toEqual([]);
+  });
+
+  it("keeps colliding eight-character OBJ names as separate hierarchy groups", () => {
+    const source = `I\n800\nOBJ\nVT 0 0 0 0 1 0 0 0\nVT 1 0 0 0 1 0 1 0\nVT 0 1 0 0 1 0 0 1\nIDX 0 1 2\nTRIS 0 3`;
+    const bytes = buildOpenFlight({
+      models: [parseObj8("first/interior-wall.obj", source), parseObj8("second/interior_window.obj", source)],
+      textures: [],
+      coordinateMode: "keep-xplane",
+    });
+
+    const sourceGroups = recordIds(bytes, 2).slice(1);
+    expect(sourceGroups).toHaveLength(2);
+    expect(new Set(sourceGroups.map((id) => id.toLowerCase())).size).toBe(2);
   });
 
   it("writes a white texture-modulating material and preserves X-Plane surface state", () => {
