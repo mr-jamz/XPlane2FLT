@@ -1,5 +1,5 @@
 import JSZip, { type JSZipObject } from "jszip";
-import { buildOpenFlight, validateOpenFlight } from "./openflight";
+import { buildOpenFlight, countOpenFlightGeometryObjects, validateOpenFlight } from "./openflight";
 import { parseObj8 } from "./obj8";
 import { optimizeModels } from "./optimizer";
 import { resizeTexture } from "./texture";
@@ -314,6 +314,20 @@ export async function convertArchive(
           triangles: model.triangles.length,
           originalTriangles: selectedModels[index].triangles.length,
           diffuseTexture: model.texturePath ?? null,
+          hierarchyParts: (() => {
+            const counts = new Map<string, number>();
+            for (const triangle of model.triangles) {
+              const id = triangle.hierarchyPartId ?? "static";
+              counts.set(id, (counts.get(id) ?? 0) + 1);
+            }
+            const metadata = new Map((model.hierarchyParts ?? []).map((part) => [part.id, part]));
+            return [...counts].map(([id, triangles]) => ({
+              id,
+              name: metadata.get(id)?.name ?? (id === "static" ? "STATIC" : id),
+              triangles,
+              datarefs: metadata.get(id)?.datarefs ?? [],
+            }));
+          })(),
         })),
         copiedTextures: textureReport,
         diagnostics: [...inspection.diagnostics, ...optimized.diagnostics],
@@ -340,7 +354,7 @@ export async function convertArchive(
     packageFileName,
     diagnostics: [...inspection.diagnostics, ...optimized.diagnostics, ...validationDiagnostics],
     textureCount: selectedTextures.length,
-    objectCount: exportModels.filter((model) => model.triangles.length > 0).length,
+    objectCount: countOpenFlightGeometryObjects(exportModels),
     triangleCount: optimized.stats.optimizedTriangles,
     optimization: optimized.stats,
   };

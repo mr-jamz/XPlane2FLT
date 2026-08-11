@@ -18,6 +18,14 @@ export interface Obj8Triangle {
   doubleSided: boolean;
   drawEnabled?: boolean;
   material?: Obj8MaterialState;
+  hierarchyPartId?: string;
+}
+
+export interface Obj8HierarchyPart {
+  id: string;
+  name: string;
+  kind: "static" | "animation";
+  datarefs: string[];
 }
 
 export interface Obj8MaterialState {
@@ -37,6 +45,7 @@ export interface Obj8Model {
   normalTexturePath?: string;
   vertices: Obj8Vertex[];
   triangles: Obj8Triangle[];
+  hierarchyParts?: Obj8HierarchyPart[];
   diagnostics: Diagnostic[];
 }
 

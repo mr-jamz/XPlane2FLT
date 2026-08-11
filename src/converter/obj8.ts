@@ -1,10 +1,40 @@
-import type { Diagnostic, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
+import type { Diagnostic, Obj8HierarchyPart, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
 import { basename } from "./path";
 
 function finiteNumbers(parts: string[], start: number, count: number): number[] | null {
   if (parts.length < start + count) return null;
   const values = parts.slice(start, start + count).map(Number);
   return values.every(Number.isFinite) ? values : null;
+}
+
+function animationPartName(index: number, datarefs: string[]): string {
+  const references = datarefs.map((dataref) => dataref.toLowerCase());
+  const hasTailRotor = references.some((dataref) => (
+    /(?:tail[_/-]?rotor|rotor[_/-]?tail)/.test(dataref)
+    || /(?:^|[/_.-])rotor[_-]?2(?:[/_.-]|$)/.test(dataref)
+    || /(?:^|[/_.-])prop[_-]?2(?:[/_.-]|$)/.test(dataref)
+    || /prop_speed_rpm\[1\]/.test(dataref)
+  ));
+  if (hasTailRotor) return "TAILROTR";
+
+  const hasMainRotor = references.some((dataref) => (
+    /(?:main[_/-]?rotor|rotor[_/-]?main)/.test(dataref)
+    || /(?:^|[/_.-])rotor[_-]?1(?:[/_.-]|$)/.test(dataref)
+    || /(?:^|[/_.-])prop[_-]?1(?:[/_.-]|$)/.test(dataref)
+    || /prop_speed_rpm\[0\]/.test(dataref)
+  ));
+  if (hasMainRotor) return "MAINROTR";
+  return `ANIM${String(index).padStart(4, "0")}`;
+}
+
+function animationDataref(command: string, parts: string[]): string | undefined {
+  if (!["ANIM_ROTATE", "ANIM_ROTATE_BEGIN", "ANIM_TRANS", "ANIM_TRANS_BEGIN", "ANIM_HIDE", "ANIM_SHOW"].includes(command)) {
+    return undefined;
+  }
+  const candidate = command.endsWith("_BEGIN") && command !== "ANIM_ROTATE_BEGIN"
+    ? parts[1]
+    : parts.at(-1);
+  return candidate && candidate.toLowerCase() !== "none" ? candidate : undefined;
 }
 
 export function parseObj8(path: string, source: string): Obj8Model {
@@ -26,6 +56,10 @@ export function parseObj8(path: string, source: string): Obj8Model {
     alphaCutoff: 0.5,
   };
   let animationDepth = 0;
+  let animationPartNumber = 0;
+  let currentAnimationPartId: string | undefined;
+  const animationParts: Array<{ id: string; datarefs: Set<string> }> = [];
+  const usedHierarchyPartIds = new Set<string>();
   let animationWarningAdded = false;
   let lodWarningAdded = false;
 
@@ -94,6 +128,11 @@ export function parseObj8(path: string, source: string): Obj8Model {
       continue;
     }
     if (command === "ANIM_BEGIN") {
+      if (animationDepth === 0) {
+        animationPartNumber += 1;
+        currentAnimationPartId = `anim-${animationPartNumber}`;
+        animationParts.push({ id: currentAnimationPartId, datarefs: new Set() });
+      }
       animationDepth += 1;
       if (!animationWarningAdded) {
         diagnostics.push({
@@ -108,7 +147,12 @@ export function parseObj8(path: string, source: string): Obj8Model {
     }
     if (command === "ANIM_END") {
       animationDepth = Math.max(0, animationDepth - 1);
+      if (animationDepth === 0) currentAnimationPartId = undefined;
       continue;
+    }
+    const dataref = animationDataref(command, parts);
+    if (dataref && currentAnimationPartId) {
+      animationParts.find((part) => part.id === currentAnimationPartId)?.datarefs.add(dataref);
     }
     if ((command === "ATTR_LOD" || command === "LOD") && !lodWarningAdded) {
       diagnostics.push({
@@ -179,12 +223,14 @@ export function parseObj8(path: string, source: string): Obj8Model {
           indices: [a, b, c],
           doubleSided,
           drawEnabled,
+          hierarchyPartId: currentAnimationPartId ?? "static",
           material: {
             ...material,
             diffuse: [...material.diffuse],
             emissive: [...material.emissive],
           },
         });
+        usedHierarchyPartIds.add(currentAnimationPartId ?? "static");
       }
     }
   }
@@ -206,6 +252,22 @@ export function parseObj8(path: string, source: string): Obj8Model {
     });
   }
 
+  const hierarchyParts: Obj8HierarchyPart[] = [];
+  if (usedHierarchyPartIds.has("static")) {
+    hierarchyParts.push({ id: "static", name: "STATIC", kind: "static", datarefs: [] });
+  }
+  for (let index = 0; index < animationParts.length; index += 1) {
+    const part = animationParts[index];
+    if (!usedHierarchyPartIds.has(part.id)) continue;
+    const datarefs = [...part.datarefs];
+    hierarchyParts.push({
+      id: part.id,
+      name: animationPartName(index + 1, datarefs),
+      kind: "animation",
+      datarefs,
+    });
+  }
+
   return {
     path,
     name: basename(path),
@@ -214,6 +276,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
     normalTexturePath,
     vertices,
     triangles,
+    hierarchyParts,
     diagnostics,
   };
 }

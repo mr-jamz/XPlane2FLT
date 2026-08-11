@@ -21,7 +21,7 @@ function materialKey(triangle: Obj8Triangle): string {
 }
 
 function triangleStateKey(triangle: Obj8Triangle): string {
-  return `${triangle.doubleSided ? 1 : 0}|${materialKey(triangle)}`;
+  return `${triangle.hierarchyPartId ?? "static"}|${triangle.doubleSided ? 1 : 0}|${materialKey(triangle)}`;
 }
 
 function areaSquared(a: Obj8Vertex, b: Obj8Vertex, c: Obj8Vertex): number {
@@ -113,6 +113,20 @@ function selectWholeTriangles(model: Obj8Model, target: number, preserveThinPart
   if (model.triangles.length <= target || target < 4) return model;
   const required = new Set<number>();
 
+  // Keep at least one authored face from every hierarchy part. A small tail
+  // rotor or control surface must not disappear merely because the source OBJ
+  // also contains a much larger animated assembly.
+  const representedParts = new Set<string>();
+  model.triangles.forEach((triangle, index) => {
+    const partId = triangle.hierarchyPartId ?? "static";
+    if (!representedParts.has(partId)) {
+      representedParts.add(partId);
+      required.add(index);
+    }
+  });
+  const selectionTarget = Math.max(target, required.size);
+  if (selectionTarget >= model.triangles.length) return model;
+
   // Preserve triangles containing each positional extreme. This keeps the
   // authored object bounds and coordinate frame exactly stationary.
   const box = bounds(model.vertices);
@@ -128,7 +142,7 @@ function selectWholeTriangles(model: Obj8Model, target: number, preserveThinPart
   if (preserveThinParts) {
     // Retain the smallest-area authored faces as anchors for blades, probes,
     // antennas, gear struts, and other thin geometry.
-    const thinCount = Math.min(Math.max(8, Math.floor(target * 0.04)), target);
+    const thinCount = Math.min(Math.max(8, Math.floor(selectionTarget * 0.04)), selectionTarget);
     model.triangles
       .map((triangle, index) => ({
         index,
@@ -143,8 +157,8 @@ function selectWholeTriangles(model: Obj8Model, target: number, preserveThinPart
       .forEach(({ index }) => required.add(index));
   }
 
-  const chosen = new Set([...required].slice(0, target));
-  const quota = target - chosen.size;
+  const chosen = new Set([...required].slice(0, selectionTarget));
+  const quota = selectionTarget - chosen.size;
   if (quota > 0) {
     const available = model.triangles.length - chosen.size;
     for (let slot = 0; slot < quota; slot += 1) {

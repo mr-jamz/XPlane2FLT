@@ -273,15 +273,70 @@ function sourceObjectIds(models: Obj8Model[]): string[] {
   });
 }
 
+interface ExportPart {
+  id: string;
+  name: string;
+  triangles: Obj8Triangle[];
+}
+
+interface ModelExportLayout {
+  parts: ExportPart[];
+  usePartGroups: boolean;
+}
+
+function uniqueRecordId(value: string, fallback: string, used: Set<string>): string {
+  const base = value.replace(/[^a-zA-Z0-9_-]+/g, "").slice(0, 8) || fallback.slice(0, 8);
+  let id = base;
+  for (let suffix = 2; used.has(id.toLowerCase()); suffix += 1) {
+    const ending = String(suffix);
+    id = `${base.slice(0, 8 - ending.length)}${ending}`;
+  }
+  used.add(id.toLowerCase());
+  return id;
+}
+
+function modelExportLayout(model: Obj8Model): ModelExportLayout {
+  const metadata = new Map((model.hierarchyParts ?? []).map((part) => [part.id, part]));
+  const byId = new Map<string, Obj8Triangle[]>();
+  for (const triangle of model.triangles) {
+    const id = triangle.hierarchyPartId ?? "static";
+    const existing = byId.get(id);
+    if (existing) existing.push(triangle);
+    else byId.set(id, [triangle]);
+  }
+
+  const usedNames = new Set<string>();
+  const parts = [...byId].map(([id, triangles], index) => ({
+    id,
+    name: uniqueRecordId(metadata.get(id)?.name ?? (id === "static" ? "STATIC" : id), `PART${String(index + 1).padStart(4, "0")}`, usedNames),
+    triangles,
+  }));
+  return {
+    parts,
+    // Preserve the v1.0.15 shape for ordinary static source objects. A named
+    // child group is added only when OBJ8 supplies an actual part boundary.
+    usePartGroups: parts.length > 1 || (parts.length === 1 && parts[0].id !== "static"),
+  };
+}
+
+export function countOpenFlightGeometryObjects(models: Obj8Model[]): number {
+  return models.reduce((sum, model) => sum + modelExportLayout(model).parts.length, 0);
+}
+
 export function buildOpenFlight(input: BuildInput): Uint8Array {
+  const layouts = input.models.map(modelExportLayout);
   const vertexCount = input.models.reduce((sum, model) => sum + model.vertices.length, 0);
   const triangleCount = input.models.reduce((sum, model) => sum + model.triangles.length, 0);
-  const populatedObjectCount = input.models.filter((model) => model.triangles.length > 0).length;
+  const populatedSourceCount = layouts.filter((layout) => layout.parts.length > 0).length;
+  const populatedObjectCount = layouts.reduce((sum, layout) => sum + layout.parts.length, 0);
+  const partGroupCount = layouts.reduce((sum, layout) => sum + (layout.usePartGroups ? layout.parts.length : 0), 0);
   const materialPalette = collectMaterials(input.models);
   const vertexPaletteLength = VERTEX_PALETTE_HEADER_LENGTH + vertexCount * VERTEX_RECORD_LENGTH;
   const outputSize = HEADER_LENGTH + input.textures.length * 216 + materialPalette.materials.length * MATERIAL_PALETTE_LENGTH + vertexPaletteLength
     + 4 + GROUP_LENGTH + 4
-    + populatedObjectCount * (GROUP_LENGTH + 4 + OBJECT_LENGTH + 4 + 4 + 4)
+    + populatedSourceCount * (GROUP_LENGTH + 4 + 4)
+    + partGroupCount * (GROUP_LENGTH + 4 + 4)
+    + populatedObjectCount * (OBJECT_LENGTH + 4 + 4)
     + triangleCount * (FACE_LENGTH + 4 + VERTEX_LIST_LENGTH + 4)
     + 4 + 4;
   if (!Number.isSafeInteger(outputSize) || outputSize > 1_500_000_000) throw new Error("The selected objects exceed the safe browser export size. Select fewer OBJ8 meshes and try again.");
@@ -310,29 +365,37 @@ export function buildOpenFlight(input: BuildInput): Uint8Array {
   let faceNumber = 1;
   for (let objectIndex = 0; objectIndex < input.models.length; objectIndex += 1) {
     const model = input.models[objectIndex];
-    if (model.triangles.length === 0) continue;
+    const layout = layouts[objectIndex];
+    if (layout.parts.length === 0) continue;
     const textureIndex = model.texturePath ? textureBySource.get(model.texturePath.toLowerCase()) ?? -1 : -1;
     // A source OBJ owns one independent FLT group. Never batch or merge
     // geometry across this boundary, even when textures/materials match.
     writeGroup(writer, objectIds[objectIndex]);
     push(writer);
-    writeObject(writer, "GEOMETRY");
-    push(writer);
-    for (const triangle of model.triangles) {
-      const materialIndex = materialPalette.indices.get(materialKey(normalizedMaterial(triangle))) ?? -1;
-      writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, materialIndex, triangle);
+    for (const part of layout.parts) {
+      if (layout.usePartGroups) {
+        writeGroup(writer, part.name);
+        push(writer);
+      }
+      writeObject(writer, "GEOMETRY");
       push(writer);
-      const base = modelVertexBaseOffsets[objectIndex];
-      const indices = openFlightTriangleIndices(triangle, input.coordinateMode);
-      writeVertexList(writer, [
-        base + indices[0] * VERTEX_RECORD_LENGTH,
-        base + indices[1] * VERTEX_RECORD_LENGTH,
-        base + indices[2] * VERTEX_RECORD_LENGTH,
-      ]);
+      for (const triangle of part.triangles) {
+        const materialIndex = materialPalette.indices.get(materialKey(normalizedMaterial(triangle))) ?? -1;
+        writeFace(writer, `F${String(faceNumber).padStart(6, "0")}`.slice(0, 7), textureIndex, materialIndex, triangle);
+        push(writer);
+        const base = modelVertexBaseOffsets[objectIndex];
+        const indices = openFlightTriangleIndices(triangle, input.coordinateMode);
+        writeVertexList(writer, [
+          base + indices[0] * VERTEX_RECORD_LENGTH,
+          base + indices[1] * VERTEX_RECORD_LENGTH,
+          base + indices[2] * VERTEX_RECORD_LENGTH,
+        ]);
+        pop(writer);
+        faceNumber += 1;
+      }
       pop(writer);
-      faceNumber += 1;
+      if (layout.usePartGroups) pop(writer);
     }
-    pop(writer);
     pop(writer);
   }
 

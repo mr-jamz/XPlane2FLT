@@ -87,4 +87,14 @@ describe("geometry optimizer", () => {
     expect(result.models[0].triangles).toHaveLength(source.triangles.length - 1);
     expect(result.models[0].triangles.every((triangle) => triangle.drawEnabled !== false)).toBe(true);
   });
+
+  it("never deduplicates identical faces across hierarchy part boundaries", () => {
+    const source = grid("rotors.obj", 1, 1);
+    source.triangles[0].hierarchyPartId = "main";
+    source.triangles[1] = { ...source.triangles[0], hierarchyPartId: "tail" };
+    const result = optimizeModels([source], { ...options, preset: "original" });
+
+    expect(result.models[0].triangles).toHaveLength(2);
+    expect(result.models[0].triangles.map((triangle) => triangle.hierarchyPartId)).toEqual(["main", "tail"]);
+  });
 });

@@ -25,6 +25,7 @@ describe("parseObj8", () => {
       indices: [0, 1, 2],
       doubleSided: true,
       drawEnabled: true,
+      hierarchyPartId: "static",
       material: {
         diffuse: [1, 1, 1],
         emissive: [0, 0, 0],
@@ -60,5 +61,36 @@ TRIS 0 3`);
     const model = parseObj8("bad.obj", `I\n800\nOBJ\nVT 0 0 0 0 1 0 0 0\nIDX 0 1 9\nTRIS 0 3`);
     expect(model.triangles).toHaveLength(0);
     expect(model.diagnostics.some((item) => item.code === "OBJ8_INDEX_OUT_OF_RANGE")).toBe(true);
+  });
+
+  it("preserves top-level animated parts and identifies main and tail rotors", () => {
+    const model = parseObj8("objects/rotors.obj", `I
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 1 0 0 1 0 0 1
+VT 10 0 0 0 1 0 0 0
+VT 11 0 0 0 1 0 1 0
+VT 10 1 0 0 1 0 0 1
+IDX 0 1 2 3 4 5
+ANIM_begin
+ANIM_rotate 0 1 0 0 360 0 360 uh60m/rotor/rotor1_deg
+ANIM_begin
+TRIS 0 3
+ANIM_end
+ANIM_end
+ANIM_begin
+ANIM_rotate 1 0 0 0 360 0 360 uh60m/rotor/rotor2_deg
+TRIS 3 3
+ANIM_end`);
+
+    expect(model.hierarchyParts).toEqual([
+      expect.objectContaining({ id: "anim-1", name: "MAINROTR", kind: "animation" }),
+      expect.objectContaining({ id: "anim-2", name: "TAILROTR", kind: "animation" }),
+    ]);
+    expect(model.triangles.map((triangle) => triangle.hierarchyPartId)).toEqual(["anim-1", "anim-2"]);
+    expect(model.hierarchyParts?.[0].datarefs).toContain("uh60m/rotor/rotor1_deg");
+    expect(model.hierarchyParts?.[1].datarefs).toContain("uh60m/rotor/rotor2_deg");
   });
 });
