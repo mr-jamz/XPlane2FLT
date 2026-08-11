@@ -210,10 +210,20 @@ export async function convertArchive(
   inspection: ArchiveInspection,
   options: ConversionOptions,
 ): Promise<ConversionResult> {
+  let lastProgress = -1;
+  const report = (percent: number, stage: string) => {
+    const next = Math.max(lastProgress, Math.min(100, Math.round(percent)));
+    if (next === lastProgress && next !== 100) return;
+    lastProgress = next;
+    options.onProgress?.({ percent: next, stage });
+  };
+  const yieldToBrowser = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  report(2, "Reading aircraft archive");
   if (inspection.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
     throw new Error("The archive contains blocking errors. Resolve them before converting.");
   }
   const zip = await loadArchive(source);
+  report(10, "Selecting aircraft objects");
   const selectedPathSet = new Set(options.selectedModelPaths.map((path) => path.toLowerCase()));
   const selectedModels = inspection.models.filter((model) => selectedPathSet.has(model.path.toLowerCase()));
   if (selectedModels.length === 0) throw new Error("Select at least one OBJ8 mesh before converting.");
@@ -225,11 +235,15 @@ export async function convertArchive(
       + ` (${examples}${untexturedModels.length > 4 ? ", …" : ""}). Add the missing PNG/DDS files, deselect those meshes, or confirm that you want to export them without diffuse textures.`,
     );
   }
+  report(18, "Optimizing geometry");
+  await yieldToBrowser();
   const optimized = optimizeModels(selectedModels, options.optimization);
   if (optimized.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
     throw new Error(optimized.diagnostics.map((diagnostic) => `${diagnostic.file ?? "Geometry"}: ${diagnostic.message}`).join(" "));
   }
   const exportModels = optimized.models;
+  report(48, "Preparing textures");
+  await yieldToBrowser();
   const normalizedEntries = new Map<string, JSZipObject>();
   for (const [path, entry] of Object.entries(zip.files)) {
     if (!entry.dir) normalizedEntries.set(normalizeArchivePath(path).toLowerCase(), entry);
@@ -262,6 +276,8 @@ export async function convertArchive(
     coordinateMode: options.coordinateMode,
     databaseId: outputStem,
   });
+  report(68, "Validating OpenFlight");
+  await yieldToBrowser();
   const validationDiagnostics = validateOpenFlight(flt);
   if (validationDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
     throw new Error(validationDiagnostics.map((diagnostic) => diagnostic.message).join(" "));
@@ -270,7 +286,8 @@ export async function convertArchive(
   const outputZip = new JSZip();
   outputZip.file(fltFileName, flt);
   const textureReport: Array<{ source: string; output: string; resized: boolean; width?: number; height?: number }> = [];
-  for (const sourcePath of selectedTextures) {
+  for (let textureIndex = 0; textureIndex < selectedTextures.length; textureIndex += 1) {
+    const sourcePath = selectedTextures[textureIndex];
     const entry = normalizedEntries.get(sourcePath.toLowerCase());
     const outputPath = outputPathBySource.get(sourcePath.toLowerCase());
     if (entry && outputPath) {
@@ -278,6 +295,7 @@ export async function convertArchive(
       outputZip.file(outputPath, resized.bytes);
       textureReport.push({ source: sourcePath, output: outputPath, resized: resized.resized, width: resized.width, height: resized.height });
     }
+    report(70 + (selectedTextures.length ? 15 * (textureIndex + 1) / selectedTextures.length : 15), "Packaging textures");
   }
 
   outputZip.file(
@@ -305,12 +323,15 @@ export async function convertArchive(
     ),
   );
 
+  report(86, "Compressing output package");
   const packageZip = await outputZip.generateAsync({
     type: "uint8array",
     compression: "DEFLATE",
     compressionOptions: { level: 6 },
     platform: "UNIX",
-  });
+  }, (metadata) => report(86 + metadata.percent * 0.13, "Compressing output package"));
+
+  report(100, "Conversion complete");
 
   return {
     flt,

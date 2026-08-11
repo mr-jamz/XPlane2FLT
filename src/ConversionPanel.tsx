@@ -5,7 +5,7 @@ import type { LoadedAircraft } from "./core/types";
 import { convertArchive, inspectArchive } from "./converter/archive";
 import { downloadBytes } from "./converter/download";
 import { safeFileStem } from "./converter/path";
-import type { ConversionResult, OptimizationPreset } from "./converter/types";
+import type { ConversionProgress, ConversionResult, OptimizationPreset } from "./converter/types";
 
 interface ConversionPanelProps {
   aircraft: LoadedAircraft;
@@ -23,7 +23,9 @@ const PRESETS: Record<OptimizationPreset, { targetTriangles: number; minTriangle
 async function makeSourceArchive(aircraft: LoadedAircraft): Promise<Uint8Array> {
   const zip = new JSZip();
   for (const source of aircraft.files) zip.file(source.path, source.file);
-  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 3 } });
+  // This archive is only an in-memory handoff to the converter. STORE avoids
+  // compressing every aircraft asset only to inflate it again immediately.
+  return zip.generateAsync({ type: "uint8array", compression: "STORE" });
 }
 
 function selectedConverterPaths(paths: string[], visiblePaths: Set<string>): string[] {
@@ -42,6 +44,7 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
   const [error, setError] = useState<string | null>(null);
   const [missingTextureWarning, setMissingTextureWarning] = useState<string | null>(null);
   const [result, setResult] = useState<ConversionResult | null>(null);
+  const [progress, setProgress] = useState<ConversionProgress | null>(null);
   const visibleCount = useMemo(() => aircraft.models.filter((model) => visiblePaths.has(model.path)).length, [aircraft, visiblePaths]);
 
   const convert = async (allowMissingDiffuseTextures = false) => {
@@ -49,6 +52,7 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
     setError(null);
     setMissingTextureWarning(null);
     setResult(null);
+    setProgress({ percent: 0, stage: "Preparing aircraft" });
     try {
       const source = await makeSourceArchive(aircraft);
       const inspection = await inspectArchive(source, `${outputName || "aircraft"}.zip`);
@@ -71,6 +75,7 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
           removeDuplicateFaces: true,
           textureMaxSize: 0,
         },
+        onProgress: setProgress,
       });
       setResult(next);
     } catch (reason) {
@@ -114,8 +119,14 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
         <p>Visibility toggles determine export selection. Viewer geometry, textures, and highlight colors are never modified.</p>
         <button type="button" className="primary-button conversion-button" disabled={busy || visibleCount === 0} onClick={() => void convert(false)}>
           {busy ? <LoaderCircle className="spinner-icon" size={17} /> : <FileArchive size={17} />}
-          {busy ? "Building FLT package…" : "Convert visible objects"}
+          {busy ? `${progress?.stage ?? "Building FLT package"}…` : "Convert visible objects"}
         </button>
+        {busy && progress && (
+          <div className="conversion-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
+            <div className="conversion-progress-label"><span>{progress.stage}</span><strong>{progress.percent}%</strong></div>
+            <div className="conversion-progress-track"><i style={{ width: `${progress.percent}%` }} /></div>
+          </div>
+        )}
       </section>
       {missingTextureWarning && (
         <div className="conversion-message is-warning">

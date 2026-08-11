@@ -68,10 +68,11 @@ function clean(model: Obj8Model, options: GeometryOptimizationOptions): Obj8Mode
   if (options.weldVertices) {
     const byKey = new Map<string, number>();
     const welded: Obj8Vertex[] = [];
-    remap = vertices.map((vertex) => {
+    const keys = vertices.map(vertexKey);
+    remap = vertices.map((vertex, sourceIndex) => {
       // Exact full-attribute welding only. Positions with different UVs or
       // normals remain separate, and near-but-distinct coordinates never move.
-      const key = vertexKey(vertex);
+      const key = keys[sourceIndex];
       const existing = byKey.get(key);
       if (existing !== undefined) return existing;
       const index = welded.length;
@@ -83,8 +84,10 @@ function clean(model: Obj8Model, options: GeometryOptimizationOptions): Obj8Mode
   }
 
   const seen = new Set<string>();
+  const stateKeys = options.removeDuplicateFaces ? model.triangles.map(triangleStateKey) : [];
   const triangles: Obj8Triangle[] = [];
-  for (const source of model.triangles) {
+  for (let triangleIndex = 0; triangleIndex < model.triangles.length; triangleIndex += 1) {
+    const source = model.triangles[triangleIndex];
     // OBJ8 draw-disable ranges are helper/hidden geometry and must not enter
     // either the preview or the final OpenFlight package.
     if (source.drawEnabled === false) continue;
@@ -94,7 +97,10 @@ function clean(model: Obj8Model, options: GeometryOptimizationOptions): Obj8Mode
       a === b || b === c || a === c || areaSquared(vertices[a], vertices[b], vertices[c]) <= Number.EPSILON
     )) continue;
     if (options.removeDuplicateFaces) {
-      const key = `${[...indices].sort((left, right) => left - right).join(",")}|${triangleStateKey(source)}`;
+      const sorted = indices[0] < indices[1]
+        ? (indices[1] < indices[2] ? [indices[0], indices[1], indices[2]] : indices[0] < indices[2] ? [indices[0], indices[2], indices[1]] : [indices[2], indices[0], indices[1]])
+        : (indices[0] < indices[2] ? [indices[1], indices[0], indices[2]] : indices[1] < indices[2] ? [indices[1], indices[2], indices[0]] : [indices[2], indices[1], indices[0]]);
+      const key = `${sorted[0]},${sorted[1]},${sorted[2]}|${stateKeys[triangleIndex]}`;
       if (seen.has(key)) continue;
       seen.add(key);
     }

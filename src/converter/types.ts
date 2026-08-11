@@ -70,6 +70,12 @@ export interface ConversionOptions {
   selectedModelPaths: string[];
   allowMissingDiffuseTextures?: boolean;
   optimization: GeometryOptimizationOptions;
+  onProgress?: (progress: ConversionProgress) => void;
+}
+
+export interface ConversionProgress {
+  percent: number;
+  stage: string;
 }
 
 export type OptimizationPreset = "original" | "balanced" | "performance" | "aggressive" | "custom";

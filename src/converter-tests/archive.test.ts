@@ -63,6 +63,29 @@ describe("aircraft archive pipeline", () => {
     expect(output.file("conversion-report.json")).not.toBeNull();
   });
 
+  it("reports monotonic conversion progress through completion", async () => {
+    const source = await sampleAircraftZip();
+    const inspection = await inspectArchive(source, "demo.zip");
+    const updates: Array<{ percent: number; stage: string }> = [];
+
+    await convertArchive(source, inspection, {
+      outputName: "progress-demo",
+      coordinateMode: "openflight-z-up",
+      includeUnreferencedTextures: false,
+      selectedModelPaths: inspection.models.map((model) => model.path),
+      onProgress: (progress) => updates.push(progress),
+      optimization: {
+        preset: "original", targetTriangles: 1, minTrianglesPerPart: 1,
+        preserveThinParts: true, weldVertices: false, removeDegenerateFaces: true,
+        removeDuplicateFaces: true, textureMaxSize: 0,
+      },
+    });
+
+    expect(updates.length).toBeGreaterThan(5);
+    expect(updates.at(-1)).toEqual({ percent: 100, stage: "Conversion complete" });
+    expect(updates.every((update, index) => index === 0 || update.percent >= updates[index - 1].percent)).toBe(true);
+  });
+
   it("resolves an OBJ PNG texture reference to a same-stem DDS file", async () => {
     const zip = new JSZip();
     zip.file("Aircraft/demo.acf", "I\n1200 Version\n");
