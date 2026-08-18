@@ -69,6 +69,7 @@ export interface ArchiveInspection {
   textureFiles: string[];
   models: Obj8Model[];
   configurationDatarefs: Record<string, number>;
+  inferredConfigurationDatarefs: string[];
   diagnostics: Diagnostic[];
   totals: {
     files: number;

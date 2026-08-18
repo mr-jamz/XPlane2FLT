@@ -128,8 +128,33 @@ describe("aircraft archive pipeline", () => {
       "uh60m/conf/flir": 1,
       "uh60m/conf/exterior": 1,
     });
+    expect(inspection.inferredConfigurationDatarefs).toEqual([]);
     expect(inspection.models[0].triangles).toHaveLength(1);
     expect(inspection.models[0].excludedByVisibility).toBe(1);
+  });
+
+  it("initializes unpersisted aircraft configuration datarefs to zero", async () => {
+    const zip = new JSZip();
+    zip.file("Aircraft/uh60m.acf", [
+      "I", "1200 Version", "ACF",
+      "P _obja/0/_v10_att_file_stl basket.obj",
+      "P _obja/0/_obj_hide_dataref uh60m/kill/probe",
+    ].join("\n"));
+    zip.file("Aircraft/opt_config.ini", "probe=0\n");
+    zip.file("Aircraft/objects/basket.obj", [
+      "I", "800", "OBJ",
+      "VT 0 0 0 0 1 0 0 0", "VT 1 0 0 0 1 0 1 0", "VT 0 1 0 0 1 0 0 1",
+      "IDX 0 1 2",
+      "ANIM_begin", "ANIM_hide 0 0.9 uh60m/conf/probe_basket", "TRIS 0 3", "ANIM_end",
+    ].join("\n"));
+    const source = await zip.generateAsync({ type: "uint8array" });
+
+    const inspection = await inspectArchive(source, "uh60m.zip");
+
+    expect(inspection.configurationDatarefs["uh60m/conf/probe_basket"]).toBe(0);
+    expect(inspection.inferredConfigurationDatarefs).toEqual(["uh60m/conf/probe_basket"]);
+    expect(inspection.models[0].triangles).toHaveLength(0);
+    expect(inspection.diagnostics).toContainEqual(expect.objectContaining({ code: "CONFIGURATION_ZERO_DEFAULTS_INFERRED" }));
   });
 
   it("applies Plane Maker attachment placement while inspecting export geometry", async () => {

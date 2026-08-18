@@ -128,7 +128,7 @@ ANIM_end`, {
     expect(model.diagnostics).toContainEqual(expect.objectContaining({ code: "OBJ8_VISIBILITY_FILTERED" }));
   });
 
-  it("does not guess visibility for unavailable simulator or plugin datarefs", () => {
+  it("uses X-Plane's neutral zero value for unavailable visibility datarefs", () => {
     const model = parseObj8("optional.obj", `I
 800
 OBJ
@@ -141,8 +141,8 @@ ANIM_show 1 1 custom/plugin/value
 TRIS 0 3
 ANIM_end`);
 
-    expect(model.triangles).toHaveLength(1);
-    expect(model.excludedByVisibility).toBe(0);
+    expect(model.triangles).toHaveLength(0);
+    expect(model.excludedByVisibility).toBe(1);
   });
 
   it("bakes saved dataref transforms into exported vertex positions", () => {

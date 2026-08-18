@@ -10,7 +10,7 @@ A static, local-first GitHub Pages app for inspecting complete X-Plane aircraft 
 - Command-scoped `TRIS` state: culling, blending/alpha test, depth, material colors, shininess, cockpit tagging, and LOD ranges.
 - Day albedo, `_LIT` emissive textures, legacy normal/specular textures, X-Plane 12 `TEXTURE_MAP` textures, and `NORMAL_METALNESS`.
 - Nested two-key and multi-key `ANIM_rotate` / `ANIM_trans`, plus `ANIM_show` / `ANIM_hide`.
-- OpenFlight export baking for saved `opt_config.ini` values, deterministic OBJ8 transforms, and Plane Maker ACF attachment placement.
+- OpenFlight export baking for saved `opt_config.ini` values, zero-initialized aircraft configuration datarefs, deterministic OBJ8 transforms, and Plane Maker ACF attachment placement.
 - Named, parameterized, and custom light locations.
 - Exterior, cockpit, and complete-aircraft views.
 

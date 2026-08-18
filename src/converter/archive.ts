@@ -178,8 +178,40 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
     ? parseOptionDefaults(await entryObjects.get(optionPath)!.async("string"), [...datarefPrefixes])
     : {};
 
+  const objectSources = new Map<string, string>();
+  await Promise.all(objectFiles.map(async (path) => {
+    objectSources.set(path, await entryObjects.get(path)!.async("string"));
+  }));
+
+  // SASL configuration modules often create additional numeric datarefs that
+  // are not persisted in opt_config.ini (for example hose, cable, basket, and
+  // deployment ratios). X-Plane initializes those numeric datarefs to zero.
+  // Discover only the known aircraft's /conf/ namespace and reproduce that
+  // deterministic initial value; unrelated live simulator datarefs stay absent.
+  const knownPrefixes = new Set([...datarefPrefixes].map((prefix) => prefix.toLowerCase()));
+  const configuredKeys = new Set(Object.keys(configurationDatarefs).map((dataref) => dataref.toLowerCase()));
+  const inferredConfigurationDatarefs: string[] = [];
+  for (const sourceText of objectSources.values()) {
+    for (const match of sourceText.matchAll(/\b([a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\/conf\/[a-z0-9_.\-\[\]]+)/gi)) {
+      const dataref = match[1];
+      const prefix = dataref.slice(0, dataref.toLowerCase().indexOf("/conf/")).toLowerCase();
+      if (!knownPrefixes.has(prefix) || configuredKeys.has(dataref.toLowerCase())) continue;
+      configurationDatarefs[dataref] = 0;
+      configuredKeys.add(dataref.toLowerCase());
+      inferredConfigurationDatarefs.push(dataref);
+    }
+  }
+  inferredConfigurationDatarefs.sort((left, right) => left.localeCompare(right));
+  if (inferredConfigurationDatarefs.length > 0) {
+    diagnostics.push({
+      severity: "info",
+      code: "CONFIGURATION_ZERO_DEFAULTS_INFERRED",
+      message: `${inferredConfigurationDatarefs.length} aircraft configuration dataref${inferredConfigurationDatarefs.length === 1 ? " was" : "s were"} absent from opt_config.ini and initialized to X-Plane's numeric default of zero.`,
+    });
+  }
+
   for (const path of objectFiles) {
-    const sourceText = await entryObjects.get(path)!.async("string");
+    const sourceText = objectSources.get(path)!;
     const matchingAttachments = aircraftAttachments.filter((attachment) => modelMatchesAttachment(path, attachment.path));
     const instances: Array<AircraftAttachment | undefined> = matchingAttachments.length > 0 ? matchingAttachments : [undefined];
     for (const attachment of instances) {
@@ -223,6 +255,7 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
     textureFiles,
     models: parsedModels,
     configurationDatarefs,
+    inferredConfigurationDatarefs,
     diagnostics,
     totals: {
       files: entries.length,
@@ -349,6 +382,7 @@ export async function convertArchive(
         sourceArchive: inspection.archiveName,
         coordinateMode: options.coordinateMode,
         configurationDatarefs: inspection.configurationDatarefs,
+        inferredConfigurationDatarefs: inspection.inferredConfigurationDatarefs,
         optimization: { settings: options.optimization, ...optimized.stats },
         objects: exportModels.map((model, index) => ({
           source: model.path,

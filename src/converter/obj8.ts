@@ -286,8 +286,16 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
     }
     if ((command === "ANIM_SHOW" || command === "ANIM_HIDE") && dataref) {
       const range = finiteNumbers(parts, 1, 2);
-      if (range && Object.prototype.hasOwnProperty.call(options.datarefs ?? {}, dataref)) {
-        const value = options.datarefs![dataref];
+      if (range) {
+        // X-Plane custom numeric datarefs begin at zero until their owning
+        // plugin changes them. Applying that neutral value is essential for
+        // mutually-exclusive visibility branches such as stowed hoses,
+        // rescue ropes, refueling baskets, and Remove Before Flight gear.
+        // Movement transforms retain their separate identity fallback below
+        // because an unknown live pose must never be guessed.
+        const value = Object.prototype.hasOwnProperty.call(options.datarefs ?? {}, dataref)
+          ? options.datarefs![dataref]
+          : 0;
         const inRange = value >= Math.min(range[0], range[1]) && value <= Math.max(range[0], range[1]);
         const ruleVisible = command === "ANIM_SHOW" ? inRange : !inRange;
         visibilityStack[visibilityStack.length - 1] = (visibilityStack.at(-1) ?? true) && ruleVisible;
