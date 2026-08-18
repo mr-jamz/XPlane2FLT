@@ -15,12 +15,12 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { filesFromList, loadAircraft } from "./core/files";
+import { defaultVisibleModelPaths, filesFromList, loadAircraft } from "./core/files";
 import type { LoadedAircraft, Obj8Model, SourceFile } from "./core/types";
 import { Viewer, type ViewMode } from "./viewer/Viewer";
 import { ConversionPanel } from "./ConversionPanel";
 
-const BUILD_VERSION = "v1.0.16";
+const BUILD_VERSION = "v1.0.17";
 const HIGHLIGHT_COLORS = [
   { name: "Red", value: "#ff6b6b" },
   { name: "Orange", value: "#ff9f43" },
@@ -148,7 +148,7 @@ export default function App() {
     try {
       const loaded = await loadAircraft(sources);
       setAircraft(loaded);
-      setVisible(new Set(loaded.models.map((model) => model.path)));
+      setVisible(defaultVisibleModelPaths(loaded));
       // Only persisted aircraft configuration values are explicit at load
       // time. Simulator and plugin-driven datarefs are unavailable in a
       // static browser viewer and must remain absent so Viewer can preserve

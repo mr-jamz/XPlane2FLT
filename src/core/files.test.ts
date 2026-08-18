@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseOptionDefaults } from "./files";
+import { defaultVisibleModelPaths, parseOptionDefaults } from "./files";
+import type { LoadedAircraft } from "./types";
 
 describe("parseOptionDefaults", () => {
   it("maps saved aircraft options to the plugin configuration namespace", () => {
@@ -24,5 +25,41 @@ tailnum=24611
     });
     expect(defaults).not.toHaveProperty("uh60m/kill/seats");
     expect(defaults).not.toHaveProperty("uh60m/kill/interior");
+  });
+});
+
+describe("defaultVisibleModelPaths", () => {
+  it("selects ACF attachments and weapon definitions but not unattached helper OBJs", () => {
+    const aircraft = {
+      manifest: {
+        acfPath: "uh60m.acf",
+        name: "UH60",
+        warnings: [],
+        attachments: [{ index: 0, path: "flircam.obj", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] }],
+      },
+      models: [
+        { path: "objects/flircam.obj" },
+        { path: "objects/ball.obj" },
+        { path: "weapons/AGM-179_JAGM.obj" },
+      ],
+      files: [
+        { path: "weapons/AGM-179_JAGM.wpn" },
+      ],
+    } as unknown as LoadedAircraft;
+
+    expect([...defaultVisibleModelPaths(aircraft)]).toEqual([
+      "objects/flircam.obj",
+      "weapons/AGM-179_JAGM.obj",
+    ]);
+  });
+
+  it("keeps every OBJ selected when no ACF attachment table exists", () => {
+    const aircraft = {
+      manifest: { name: "OBJ package", warnings: [], attachments: [] },
+      models: [{ path: "objects/a.obj" }, { path: "objects/b.obj" }],
+      files: [],
+    } as unknown as LoadedAircraft;
+
+    expect([...defaultVisibleModelPaths(aircraft)]).toEqual(["objects/a.obj", "objects/b.obj"]);
   });
 });

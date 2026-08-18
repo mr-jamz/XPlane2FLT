@@ -93,4 +93,55 @@ ANIM_end`);
     expect(model.hierarchyParts?.[0].datarefs).toContain("uh60m/rotor/rotor1_deg");
     expect(model.hierarchyParts?.[1].datarefs).toContain("uh60m/rotor/rotor2_deg");
   });
+
+  it("keeps only the FLIR branch selected by explicit saved configuration values", () => {
+    const model = parseObj8("objects/flircam.obj", `I
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 1 0 0 1 0 0 1
+VT 10 0 0 0 1 0 0 0
+VT 11 0 0 0 1 0 1 0
+VT 10 1 0 0 1 0 0 1
+IDX 0 1 2 3 4 5
+ANIM_begin
+ANIM_hide 0 0.9 uh60m/conf/flir
+ANIM_begin
+ANIM_show 1 1.5 uh60m/conf/exterior
+TRIS 0 3
+ANIM_end
+ANIM_begin
+ANIM_hide 1 1.5 uh60m/conf/exterior
+TRIS 3 3
+ANIM_end
+ANIM_end`, {
+      datarefs: {
+        "uh60m/conf/flir": 1,
+        "uh60m/conf/exterior": 1,
+      },
+    });
+
+    expect(model.triangles).toHaveLength(1);
+    expect(model.triangles[0].indices).toEqual([0, 1, 2]);
+    expect(model.excludedByVisibility).toBe(1);
+    expect(model.diagnostics).toContainEqual(expect.objectContaining({ code: "OBJ8_VISIBILITY_FILTERED" }));
+  });
+
+  it("does not guess visibility for unavailable simulator or plugin datarefs", () => {
+    const model = parseObj8("optional.obj", `I
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 1 0 0 1 0 0 1
+IDX 0 1 2
+ANIM_begin
+ANIM_show 1 1 custom/plugin/value
+TRIS 0 3
+ANIM_end`);
+
+    expect(model.triangles).toHaveLength(1);
+    expect(model.excludedByVisibility).toBe(0);
+  });
 });

@@ -1,6 +1,10 @@
 import type { Diagnostic, Obj8HierarchyPart, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
 import { basename } from "./path";
 
+interface ParseObj8Options {
+  datarefs?: Record<string, number>;
+}
+
 function finiteNumbers(parts: string[], start: number, count: number): number[] | null {
   if (parts.length < start + count) return null;
   const values = parts.slice(start, start + count).map(Number);
@@ -34,10 +38,15 @@ function animationDataref(command: string, parts: string[]): string | undefined 
   const candidate = command.endsWith("_BEGIN") && command !== "ANIM_ROTATE_BEGIN"
     ? parts[1]
     : parts.at(-1);
-  return candidate && candidate.toLowerCase() !== "none" ? candidate : undefined;
+  return candidate
+    && candidate.toLowerCase() !== "none"
+    && candidate.toLowerCase() !== "null"
+    && !Number.isFinite(Number(candidate))
+    ? candidate
+    : undefined;
 }
 
-export function parseObj8(path: string, source: string): Obj8Model {
+export function parseObj8(path: string, source: string, options: ParseObj8Options = {}): Obj8Model {
   const vertices: Obj8Vertex[] = [];
   const indexTable: number[] = [];
   const triangles: Obj8Triangle[] = [];
@@ -58,10 +67,12 @@ export function parseObj8(path: string, source: string): Obj8Model {
   let animationDepth = 0;
   let animationPartNumber = 0;
   let currentAnimationPartId: string | undefined;
+  const visibilityStack = [true];
   const animationParts: Array<{ id: string; datarefs: Set<string> }> = [];
   const usedHierarchyPartIds = new Set<string>();
   let animationWarningAdded = false;
   let lodWarningAdded = false;
+  let excludedByVisibility = 0;
 
   const lines = source.replace(/^\uFEFF/, "").split(/\r?\n/);
 
@@ -134,6 +145,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
         animationParts.push({ id: currentAnimationPartId, datarefs: new Set() });
       }
       animationDepth += 1;
+      visibilityStack.push(visibilityStack.at(-1) ?? true);
       if (!animationWarningAdded) {
         diagnostics.push({
           severity: "warning",
@@ -147,12 +159,23 @@ export function parseObj8(path: string, source: string): Obj8Model {
     }
     if (command === "ANIM_END") {
       animationDepth = Math.max(0, animationDepth - 1);
+      if (visibilityStack.length > 1) visibilityStack.pop();
       if (animationDepth === 0) currentAnimationPartId = undefined;
       continue;
     }
     const dataref = animationDataref(command, parts);
     if (dataref && currentAnimationPartId) {
       animationParts.find((part) => part.id === currentAnimationPartId)?.datarefs.add(dataref);
+    }
+    if ((command === "ANIM_SHOW" || command === "ANIM_HIDE") && dataref) {
+      const range = finiteNumbers(parts, 1, 2);
+      if (range && Object.prototype.hasOwnProperty.call(options.datarefs ?? {}, dataref)) {
+        const value = options.datarefs![dataref];
+        const inRange = value >= Math.min(range[0], range[1]) && value <= Math.max(range[0], range[1]);
+        const ruleVisible = command === "ANIM_SHOW" ? inRange : !inRange;
+        visibilityStack[visibilityStack.length - 1] = (visibilityStack.at(-1) ?? true) && ruleVisible;
+      }
+      continue;
     }
     if ((command === "ATTR_LOD" || command === "LOD") && !lodWarningAdded) {
       diagnostics.push({
@@ -219,6 +242,10 @@ export function parseObj8(path: string, source: string): Obj8Model {
           });
           continue;
         }
+        if (!(visibilityStack.at(-1) ?? true)) {
+          excludedByVisibility += 1;
+          continue;
+        }
         triangles.push({
           indices: [a, b, c],
           doubleSided,
@@ -251,6 +278,14 @@ export function parseObj8(path: string, source: string): Obj8Model {
       message: "No indexed triangle geometry was found in this OBJ8 file.",
     });
   }
+  if (excludedByVisibility > 0) {
+    diagnostics.push({
+      severity: "info",
+      code: "OBJ8_VISIBILITY_FILTERED",
+      file: path,
+      message: `${excludedByVisibility.toLocaleString()} triangle${excludedByVisibility === 1 ? " was" : "s were"} excluded by saved ANIM_show/ANIM_hide configuration values.`,
+    });
+  }
 
   const hierarchyParts: Obj8HierarchyPart[] = [];
   if (usedHierarchyPartIds.has("static")) {
@@ -277,6 +312,7 @@ export function parseObj8(path: string, source: string): Obj8Model {
     vertices,
     triangles,
     hierarchyParts,
+    excludedByVisibility,
     diagnostics,
   };
 }

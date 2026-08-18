@@ -1,4 +1,6 @@
 import JSZip, { type JSZipObject } from "jszip";
+import { parseAcf } from "../core/acf";
+import { parseOptionDefaults } from "../core/options";
 import { buildOpenFlight, countOpenFlightGeometryObjects, validateOpenFlight } from "./openflight";
 import { parseObj8 } from "./obj8";
 import { optimizeModels } from "./optimizer";
@@ -148,10 +150,28 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
   const objectFiles = entries.filter((entry) => entry.kind === "object").map((entry) => entry.path);
   const textureFiles = entries.filter((entry) => entry.kind === "texture").map((entry) => entry.path);
   const parsedModels: Obj8Model[] = [];
+  const datarefPrefixes = new Set<string>();
+
+  for (const path of aircraftFiles) {
+    const sourceText = await entryObjects.get(path)!.async("string");
+    const manifest = parseAcf(path, sourceText);
+    for (const warning of manifest.warnings) {
+      diagnostics.push({ severity: "warning", code: "ACF_PARSE_WARNING", file: path, message: warning });
+    }
+    for (const attachment of manifest.attachments) {
+      const prefix = attachment.hideDataref?.match(/^(.+?)\/kill\//i)?.[1];
+      if (prefix) datarefPrefixes.add(prefix);
+    }
+  }
+
+  const optionPath = entries.find((entry) => /(^|\/)opt_config\.ini$/i.test(entry.path))?.path;
+  const configurationDatarefs = optionPath && datarefPrefixes.size > 0
+    ? parseOptionDefaults(await entryObjects.get(optionPath)!.async("string"), [...datarefPrefixes])
+    : {};
 
   for (const path of objectFiles) {
     const sourceText = await entryObjects.get(path)!.async("string");
-    const model = parseObj8(path, sourceText);
+    const model = parseObj8(path, sourceText, { datarefs: configurationDatarefs });
     diagnostics.push(...model.diagnostics);
     parsedModels.push(resolveModelTextures(model, pathLookup, diagnostics));
   }
@@ -182,6 +202,7 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
     objectFiles,
     textureFiles,
     models: parsedModels,
+    configurationDatarefs,
     diagnostics,
     totals: {
       files: entries.length,
@@ -307,6 +328,7 @@ export async function convertArchive(
         geometryEncoding: "modelconverterx-compatible-face-5-vertex-palette-67-vertex-list-72",
         sourceArchive: inspection.archiveName,
         coordinateMode: options.coordinateMode,
+        configurationDatarefs: inspection.configurationDatarefs,
         optimization: { settings: options.optimization, ...optimized.stats },
         objects: exportModels.map((model, index) => ({
           source: model.path,
@@ -328,6 +350,7 @@ export async function convertArchive(
               datarefs: metadata.get(id)?.datarefs ?? [],
             }));
           })(),
+          excludedByVisibility: model.excludedByVisibility ?? 0,
         })),
         copiedTextures: textureReport,
         diagnostics: [...inspection.diagnostics, ...optimized.diagnostics],

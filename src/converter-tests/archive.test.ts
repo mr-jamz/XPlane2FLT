@@ -102,6 +102,36 @@ describe("aircraft archive pipeline", () => {
     expect(inspection.diagnostics.some((item) => item.code === "MISSING_TEXTURE")).toBe(false);
   });
 
+  it("derives saved plugin datarefs from the ACF and filters inactive OBJ8 visibility branches", async () => {
+    const zip = new JSZip();
+    zip.file("Aircraft/uh60m.acf", [
+      "I", "1200 Version", "ACF",
+      "P _obja/0/_v10_att_file_stl flircam.obj",
+      "P _obja/0/_obj_hide_dataref uh60m/kill/flir",
+    ].join("\n"));
+    zip.file("Aircraft/opt_config.ini", "flir=1\nexterior=1\n");
+    zip.file("Aircraft/objects/flircam.obj", [
+      "I", "800", "OBJ",
+      "VT 0 0 0 0 1 0 0 0", "VT 1 0 0 0 1 0 1 0", "VT 0 1 0 0 1 0 0 1",
+      "VT 10 0 0 0 1 0 0 0", "VT 11 0 0 0 1 0 1 0", "VT 10 1 0 0 1 0 0 1",
+      "IDX 0 1 2 3 4 5",
+      "ANIM_begin", "ANIM_hide 0 0.9 uh60m/conf/flir",
+      "ANIM_begin", "ANIM_show 1 1.5 uh60m/conf/exterior", "TRIS 0 3", "ANIM_end",
+      "ANIM_begin", "ANIM_hide 1 1.5 uh60m/conf/exterior", "TRIS 3 3", "ANIM_end",
+      "ANIM_end",
+    ].join("\n"));
+    const source = await zip.generateAsync({ type: "uint8array" });
+
+    const inspection = await inspectArchive(source, "uh60m.zip");
+
+    expect(inspection.configurationDatarefs).toMatchObject({
+      "uh60m/conf/flir": 1,
+      "uh60m/conf/exterior": 1,
+    });
+    expect(inspection.models[0].triangles).toHaveLength(1);
+    expect(inspection.models[0].excludedByVisibility).toBe(1);
+  });
+
   it("warns before exporting geometry without a diffuse texture and supports an explicit bypass", async () => {
     const zip = new JSZip();
     zip.file("Aircraft/demo.acf", "I\n1200 Version\n");

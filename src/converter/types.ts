@@ -46,6 +46,7 @@ export interface Obj8Model {
   vertices: Obj8Vertex[];
   triangles: Obj8Triangle[];
   hierarchyParts?: Obj8HierarchyPart[];
+  excludedByVisibility?: number;
   diagnostics: Diagnostic[];
 }
 
@@ -63,6 +64,7 @@ export interface ArchiveInspection {
   objectFiles: string[];
   textureFiles: string[];
   models: Obj8Model[];
+  configurationDatarefs: Record<string, number>;
   diagnostics: Diagnostic[];
   totals: {
     files: number;

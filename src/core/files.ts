@@ -2,7 +2,10 @@ import JSZip from "jszip";
 import { parseAcf } from "./acf";
 import { basename, normalizePath } from "./path";
 import { parseObj8 } from "./obj8";
+import { parseOptionDefaults } from "./options";
 import type { AircraftAttachment, LoadedAircraft, SourceFile } from "./types";
+
+export { parseOptionDefaults } from "./options";
 
 interface FileSystemEntry {
   isFile: boolean;
@@ -104,20 +107,37 @@ function guessedRole(path: string): AircraftAttachment["role"] {
   return "exterior";
 }
 
-export function parseOptionDefaults(source: string, prefixes: string[]): Record<string, number> {
-  const options = new Map<string, number>();
-  for (const rawLine of source.replace(/^\uFEFF/, "").split(/\r\n?|\n/)) {
-    const match = rawLine.trim().match(/^([a-z0-9_]+)\s*=\s*(-?(?:\d+\.?\d*|\.\d+))\s*$/i);
-    if (!match) continue;
-    const value = Number(match[2]);
-    if (Number.isFinite(value)) options.set(match[1].toLowerCase(), value);
+function modelMatchesReference(modelPath: string, referencePath: string): boolean {
+  const model = normalizePath(modelPath).toLowerCase();
+  const reference = normalizePath(referencePath).toLowerCase();
+  return model === reference || model.endsWith(`/${reference}`) || reference.endsWith(`/${model}`);
+}
+
+/**
+ * The aircraft package can contain plugin helpers, editor assets, and other
+ * OBJ files that Plane Maker never attaches to the aircraft. Keep them in the
+ * Parts list for manual inspection, but do not show/export them by default.
+ * Weapon OBJ files with a same-stem .wpn definition remain part of the
+ * aircraft's default selection even though Plane Maker stores them outside
+ * the normal object attachment table.
+ */
+export function defaultVisibleModelPaths(aircraft: LoadedAircraft): Set<string> {
+  if (!aircraft.manifest.acfPath || aircraft.manifest.attachments.length === 0) {
+    return new Set(aircraft.models.map((model) => model.path));
   }
 
-  const result: Record<string, number> = {};
-  for (const prefix of prefixes) {
-    for (const [name, value] of options) result[`${prefix}/conf/${name}`] = value;
-  }
-  return result;
+  const weaponDefinitions = new Set(aircraft.files
+    .map(({ path }) => normalizePath(path).toLowerCase())
+    .filter((path) => /\.wpn$/i.test(path))
+    .map((path) => path.replace(/\.wpn$/i, "")));
+
+  return new Set(aircraft.models
+    .filter((model) => {
+      const attached = aircraft.manifest.attachments.some((attachment) => modelMatchesReference(model.path, attachment.path));
+      const modelStem = normalizePath(model.path).toLowerCase().replace(/\.obj$/i, "");
+      return attached || weaponDefinitions.has(modelStem);
+    })
+    .map((model) => model.path));
 }
 
 export async function loadAircraft(inputFiles: SourceFile[]): Promise<LoadedAircraft> {
