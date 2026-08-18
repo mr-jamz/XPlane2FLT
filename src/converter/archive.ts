@@ -22,6 +22,7 @@ import type {
   Diagnostic,
   Obj8Model,
 } from "./types";
+import type { AircraftAttachment } from "../core/types";
 
 type ArchiveSource = Blob | ArrayBuffer | Uint8Array;
 
@@ -79,6 +80,12 @@ function findActualPath(pathLookup: Map<string, string>, requested: string, from
     && removeExtension(basename(candidate)).toLowerCase() === alternateStem
     && compatibleExtensions.has(extension(candidate))
   ));
+}
+
+function modelMatchesAttachment(modelPath: string, attachmentPath: string): boolean {
+  const model = normalizeArchivePath(modelPath).toLowerCase();
+  const attachment = normalizeArchivePath(attachmentPath).toLowerCase();
+  return model === attachment || model.endsWith(`/${attachment}`) || attachment.endsWith(`/${model}`);
 }
 
 function resolveModelTextures(model: Obj8Model, lookup: Map<string, string>, diagnostics: Diagnostic[]): Obj8Model {
@@ -151,6 +158,7 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
   const textureFiles = entries.filter((entry) => entry.kind === "texture").map((entry) => entry.path);
   const parsedModels: Obj8Model[] = [];
   const datarefPrefixes = new Set<string>();
+  const aircraftAttachments: AircraftAttachment[] = [];
 
   for (const path of aircraftFiles) {
     const sourceText = await entryObjects.get(path)!.async("string");
@@ -158,6 +166,7 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
     for (const warning of manifest.warnings) {
       diagnostics.push({ severity: "warning", code: "ACF_PARSE_WARNING", file: path, message: warning });
     }
+    aircraftAttachments.push(...manifest.attachments);
     for (const attachment of manifest.attachments) {
       const prefix = attachment.hideDataref?.match(/^(.+?)\/kill\//i)?.[1];
       if (prefix) datarefPrefixes.add(prefix);
@@ -171,9 +180,20 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
 
   for (const path of objectFiles) {
     const sourceText = await entryObjects.get(path)!.async("string");
-    const model = parseObj8(path, sourceText, { datarefs: configurationDatarefs });
-    diagnostics.push(...model.diagnostics);
-    parsedModels.push(resolveModelTextures(model, pathLookup, diagnostics));
+    const matchingAttachments = aircraftAttachments.filter((attachment) => modelMatchesAttachment(path, attachment.path));
+    const instances: Array<AircraftAttachment | undefined> = matchingAttachments.length > 0 ? matchingAttachments : [undefined];
+    for (const attachment of instances) {
+      const model = parseObj8(path, sourceText, {
+        datarefs: configurationDatarefs,
+        attachment: attachment ? {
+          index: attachment.index,
+          position: attachment.position,
+          rotation: attachment.rotation,
+        } : undefined,
+      });
+      diagnostics.push(...model.diagnostics);
+      parsedModels.push(resolveModelTextures(model, pathLookup, diagnostics));
+    }
   }
 
   if (aircraftFiles.length === 0) {
@@ -185,8 +205,8 @@ export async function inspectArchive(source: ArchiveSource, archiveName = "aircr
   if (aircraftFiles.length > 0 && objectFiles.length > 0) {
     diagnostics.push({
       severity: "info",
-      code: "ACF_PLACEMENT_BASE_POSE",
-      message: "This initial converter combines OBJ8 files at their authored coordinates. ACF attachment offsets and dataref animations remain in their base pose.",
+      code: "ACF_CONFIGURATION_POSE_BAKED",
+      message: "Saved aircraft configuration, deterministic OBJ8 transforms, and ACF attachment placement are baked into export geometry. Unavailable live simulator animations remain in their authored neutral pose.",
     });
   }
 
@@ -351,6 +371,10 @@ export async function convertArchive(
             }));
           })(),
           excludedByVisibility: model.excludedByVisibility ?? 0,
+          bakedTransforms: model.bakedTransformCount ?? 0,
+          skippedLiveTransforms: model.skippedLiveTransformCount ?? 0,
+          acfAttachmentIndex: model.attachmentIndex ?? null,
+          acfAttachmentTransformApplied: model.attachmentTransformApplied ?? false,
         })),
         copiedTextures: textureReport,
         diagnostics: [...inspection.diagnostics, ...optimized.diagnostics],

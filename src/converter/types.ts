@@ -47,6 +47,10 @@ export interface Obj8Model {
   triangles: Obj8Triangle[];
   hierarchyParts?: Obj8HierarchyPart[];
   excludedByVisibility?: number;
+  bakedTransformCount?: number;
+  skippedLiveTransformCount?: number;
+  attachmentIndex?: number;
+  attachmentTransformApplied?: boolean;
   diagnostics: Diagnostic[];
 }
 

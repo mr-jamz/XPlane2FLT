@@ -144,4 +144,70 @@ ANIM_end`);
     expect(model.triangles).toHaveLength(1);
     expect(model.excludedByVisibility).toBe(0);
   });
+
+  it("bakes saved dataref transforms into exported vertex positions", () => {
+    const model = parseObj8("configured.obj", `I
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 1 0 0 1 0 0 1
+IDX 0 1 2
+ANIM_begin
+ANIM_trans 0 0 0 10 0 0 0 1 demo/conf/position
+TRIS 0 3
+ANIM_end`, { datarefs: { "demo/conf/position": 1 } });
+
+    expect(model.vertices.map((vertex) => vertex.position)).toEqual([
+      [10, 0, 0],
+      [11, 0, 0],
+      [10, 1, 0],
+    ]);
+    expect(model.bakedTransformCount).toBe(1);
+    expect(model.skippedLiveTransformCount).toBe(0);
+    expect(model.diagnostics).toContainEqual(expect.objectContaining({ code: "OBJ8_CONFIGURATION_POSE_BAKED" }));
+  });
+
+  it("bakes ACF attachment position and orientation but leaves unavailable live motion neutral", () => {
+    const model = parseObj8("attached.obj", `I
+800
+OBJ
+VT 1 0 0 0 1 0 0 0
+VT 0 1 0 0 1 0 1 0
+VT 0 0 0 0 1 0 0 1
+IDX 0 1 2
+ANIM_begin
+ANIM_rotate 0 1 0 0 90 0 1 sim/live/motion
+TRIS 0 3
+ANIM_end`, {
+      attachment: { index: 7, position: [1, 2, 3], rotation: [0, 90, 0] },
+    });
+
+    expect(model.vertices[0].position[0]).toBeCloseTo(1);
+    expect(model.vertices[0].position[1]).toBeCloseTo(2);
+    expect(model.vertices[0].position[2]).toBeCloseTo(2);
+    expect(model.skippedLiveTransformCount).toBe(1);
+    expect(model.attachmentIndex).toBe(7);
+    expect(model.attachmentTransformApplied).toBe(true);
+  });
+
+  it("supports multi-key OBJ8 transforms used by aircraft plugins", () => {
+    const model = parseObj8("keys.obj", `I
+800
+OBJ
+VT 0 0 0 0 1 0 0 0
+VT 1 0 0 0 1 0 1 0
+VT 0 1 0 0 1 0 0 1
+IDX 0 1 2
+ANIM_begin
+ANIM_trans_begin demo/conf/offset
+ANIM_trans_key 0 0 0 0
+ANIM_trans_key 2 0 4 0
+ANIM_trans_end
+TRIS 0 3
+ANIM_end`, { datarefs: { "demo/conf/offset": 1 } });
+
+    expect(model.vertices[0].position).toEqual([0, 2, 0]);
+    expect(model.bakedTransformCount).toBe(1);
+  });
 });

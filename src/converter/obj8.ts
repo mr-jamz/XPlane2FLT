@@ -1,8 +1,82 @@
 import type { Diagnostic, Obj8HierarchyPart, Obj8Model, Obj8Triangle, Obj8Vertex } from "./types";
 import { basename } from "./path";
+import { Euler, Matrix3, Matrix4, Vector3 } from "three";
 
 interface ParseObj8Options {
   datarefs?: Record<string, number>;
+  attachment?: {
+    index: number;
+    position: [number, number, number];
+    rotation: [number, number, number];
+  };
+}
+
+type AnimationTransform =
+  | { type: "rotate"; axis: [number, number, number]; keys: Array<{ value: number; angle: number }>; dataref: string }
+  | { type: "translate"; keys: Array<{ value: number; position: [number, number, number] }>; dataref: string };
+
+function interpolatedKeys<T extends { value: number }>(keys: T[], value: number): [T, T, number] | null {
+  if (keys.length === 0) return null;
+  const sorted = [...keys].sort((left, right) => left.value - right.value);
+  if (sorted.length === 1 || value <= sorted[0].value) return [sorted[0], sorted[0], 0];
+  if (value >= sorted.at(-1)!.value) return [sorted.at(-1)!, sorted.at(-1)!, 0];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const left = sorted[index];
+    const right = sorted[index + 1];
+    if (value < left.value || value > right.value) continue;
+    const span = right.value - left.value;
+    return [left, right, span === 0 ? 0 : (value - left.value) / span];
+  }
+  return [sorted[0], sorted[0], 0];
+}
+
+function transformMatrix(transform: AnimationTransform, datarefs: Record<string, number>): Matrix4 | null {
+  const normalizedDataref = transform.dataref.toLowerCase();
+  const constant = !normalizedDataref || normalizedDataref === "none" || normalizedDataref === "null";
+  if (!constant && !Object.prototype.hasOwnProperty.call(datarefs, transform.dataref)) return null;
+  const value = constant ? 0 : datarefs[transform.dataref];
+
+  if (transform.type === "rotate") {
+    const pair = interpolatedKeys(transform.keys, value);
+    if (!pair) return null;
+    const [left, right, ratio] = pair;
+    const axis = new Vector3(...transform.axis);
+    if (axis.lengthSq() === 0) return new Matrix4();
+    const angle = left.angle + (right.angle - left.angle) * ratio;
+    return new Matrix4().makeRotationAxis(axis.normalize(), angle * Math.PI / 180);
+  }
+
+  const pair = interpolatedKeys(transform.keys, value);
+  if (!pair) return null;
+  const [left, right, ratio] = pair;
+  return new Matrix4().makeTranslation(
+    left.position[0] + (right.position[0] - left.position[0]) * ratio,
+    left.position[1] + (right.position[1] - left.position[1]) * ratio,
+    left.position[2] + (right.position[2] - left.position[2]) * ratio,
+  );
+}
+
+function attachmentMatrix(options: ParseObj8Options): Matrix4 {
+  const attachment = options.attachment;
+  if (!attachment) return new Matrix4();
+  const rotation = new Euler(
+    attachment.rotation[0] * Math.PI / 180,
+    attachment.rotation[1] * Math.PI / 180,
+    attachment.rotation[2] * Math.PI / 180,
+    "XYZ",
+  );
+  return new Matrix4()
+    .makeRotationFromEuler(rotation)
+    .setPosition(...attachment.position);
+}
+
+function matrixKey(matrix: Matrix4): string {
+  return matrix.elements.map((value) => Math.abs(value) < 1e-12 ? "0" : value.toPrecision(12)).join("|");
+}
+
+function hasNonIdentityTransform(matrix: Matrix4): boolean {
+  const identity = new Matrix4().elements;
+  return matrix.elements.some((value, index) => Math.abs(value - identity[index]) > 1e-10);
 }
 
 function finiteNumbers(parts: string[], start: number, count: number): number[] | null {
@@ -47,7 +121,9 @@ function animationDataref(command: string, parts: string[]): string | undefined 
 }
 
 export function parseObj8(path: string, source: string, options: ParseObj8Options = {}): Obj8Model {
+  const sourceVertices: Obj8Vertex[] = [];
   const vertices: Obj8Vertex[] = [];
+  const transformedVertexIndices = new Map<string, number>();
   const indexTable: number[] = [];
   const triangles: Obj8Triangle[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -68,11 +144,50 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
   let animationPartNumber = 0;
   let currentAnimationPartId: string | undefined;
   const visibilityStack = [true];
+  const transformStack = [new Matrix4()];
+  const acfAttachmentMatrix = attachmentMatrix(options);
+  const attachmentTransformApplied = hasNonIdentityTransform(acfAttachmentMatrix);
+  let pendingTransform: AnimationTransform | null = null;
   const animationParts: Array<{ id: string; datarefs: Set<string> }> = [];
   const usedHierarchyPartIds = new Set<string>();
   let animationWarningAdded = false;
   let lodWarningAdded = false;
   let excludedByVisibility = 0;
+  let bakedTransformCount = 0;
+  let skippedLiveTransformCount = 0;
+
+  const addTransform = (transform: AnimationTransform) => {
+    const matrix = transformMatrix(transform, options.datarefs ?? {});
+    if (matrix) {
+      transformStack[transformStack.length - 1].multiply(matrix);
+      bakedTransformCount += 1;
+    } else {
+      skippedLiveTransformCount += 1;
+    }
+  };
+
+  const currentMatrix = () => {
+    const matrix = acfAttachmentMatrix.clone();
+    for (const local of transformStack) matrix.multiply(local);
+    return matrix;
+  };
+
+  const transformedVertexIndex = (sourceIndex: number, matrix: Matrix4, normalMatrix: Matrix3, transformKey: string): number => {
+    const key = `${sourceIndex}|${transformKey}`;
+    const existing = transformedVertexIndices.get(key);
+    if (existing !== undefined) return existing;
+    const sourceVertex = sourceVertices[sourceIndex];
+    const position = new Vector3(...sourceVertex.position).applyMatrix4(matrix);
+    const normal = new Vector3(...sourceVertex.normal).applyMatrix3(normalMatrix).normalize();
+    const index = vertices.length;
+    vertices.push({
+      position: [position.x, position.y, position.z],
+      normal: [normal.x, normal.y, normal.z],
+      uv: [...sourceVertex.uv],
+    });
+    transformedVertexIndices.set(key, index);
+    return index;
+  };
 
   const lines = source.replace(/^\uFEFF/, "").split(/\r?\n/);
 
@@ -146,12 +261,13 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
       }
       animationDepth += 1;
       visibilityStack.push(visibilityStack.at(-1) ?? true);
+      transformStack.push(new Matrix4());
       if (!animationWarningAdded) {
         diagnostics.push({
           severity: "warning",
           code: "OBJ8_ANIMATION_BAKED",
           file: path,
-          message: "Animated geometry is exported in its authored base pose; X-Plane dataref animation is not transferred to OpenFlight.",
+          message: "Saved configuration and constant OBJ8 transforms are baked into OpenFlight; unavailable live simulator animations remain in their authored neutral pose.",
         });
         animationWarningAdded = true;
       }
@@ -160,6 +276,7 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
     if (command === "ANIM_END") {
       animationDepth = Math.max(0, animationDepth - 1);
       if (visibilityStack.length > 1) visibilityStack.pop();
+      if (transformStack.length > 1) transformStack.pop();
       if (animationDepth === 0) currentAnimationPartId = undefined;
       continue;
     }
@@ -175,6 +292,57 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
         const ruleVisible = command === "ANIM_SHOW" ? inRange : !inRange;
         visibilityStack[visibilityStack.length - 1] = (visibilityStack.at(-1) ?? true) && ruleVisible;
       }
+      continue;
+    }
+    if (command === "ANIM_ROTATE") {
+      const values = finiteNumbers(parts, 1, 7);
+      if (values) addTransform({
+        type: "rotate",
+        axis: [values[0], values[1], values[2]],
+        keys: [{ value: values[5], angle: values[3] }, { value: values[6], angle: values[4] }],
+        dataref: parts[8] ?? "",
+      });
+      continue;
+    }
+    if (command === "ANIM_TRANS") {
+      const values = finiteNumbers(parts, 1, 8);
+      if (values) addTransform({
+        type: "translate",
+        keys: [
+          { value: values[6], position: [values[0], values[1], values[2]] },
+          { value: values[7], position: [values[3], values[4], values[5]] },
+        ],
+        dataref: parts[9] ?? "",
+      });
+      continue;
+    }
+    if (command === "ANIM_ROTATE_BEGIN") {
+      const values = finiteNumbers(parts, 1, 3);
+      if (values) pendingTransform = {
+        type: "rotate",
+        axis: [values[0], values[1], values[2]],
+        keys: [],
+        dataref: parts[4] ?? "",
+      };
+      continue;
+    }
+    if (command === "ANIM_TRANS_BEGIN") {
+      pendingTransform = { type: "translate", keys: [], dataref: parts[1] ?? "" };
+      continue;
+    }
+    if (command === "ANIM_ROTATE_KEY" && pendingTransform?.type === "rotate") {
+      const values = finiteNumbers(parts, 1, 2);
+      if (values) pendingTransform.keys.push({ value: values[0], angle: values[1] });
+      continue;
+    }
+    if (command === "ANIM_TRANS_KEY" && pendingTransform?.type === "translate") {
+      const values = finiteNumbers(parts, 1, 4);
+      if (values) pendingTransform.keys.push({ value: values[0], position: [values[1], values[2], values[3]] });
+      continue;
+    }
+    if ((command === "ANIM_ROTATE_END" || command === "ANIM_TRANS_END") && pendingTransform) {
+      addTransform(pendingTransform);
+      pendingTransform = null;
       continue;
     }
     if ((command === "ATTR_LOD" || command === "LOD") && !lodWarningAdded) {
@@ -198,7 +366,7 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
         });
         continue;
       }
-      vertices.push({
+      sourceVertices.push({
         position: [values[0], values[1], values[2]],
         normal: [values[3], values[4], values[5]],
         uv: [values[6], values[7]],
@@ -229,11 +397,20 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
         continue;
       }
 
+      if (!(visibilityStack.at(-1) ?? true)) {
+        excludedByVisibility += Math.floor(Math.max(0, end - offset) / 3);
+        continue;
+      }
+
+      const matrix = currentMatrix();
+      const normalMatrix = new Matrix3().getNormalMatrix(matrix);
+      const transformKey = matrixKey(matrix);
+
       for (let cursor = offset; cursor + 2 < end; cursor += 3) {
         const a = indexTable[cursor];
         const b = indexTable[cursor + 1];
         const c = indexTable[cursor + 2];
-        if (a >= vertices.length || b >= vertices.length || c >= vertices.length) {
+        if (a >= sourceVertices.length || b >= sourceVertices.length || c >= sourceVertices.length) {
           diagnostics.push({
             severity: "warning",
             code: "OBJ8_INDEX_OUT_OF_RANGE",
@@ -242,12 +419,12 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
           });
           continue;
         }
-        if (!(visibilityStack.at(-1) ?? true)) {
-          excludedByVisibility += 1;
-          continue;
-        }
         triangles.push({
-          indices: [a, b, c],
+          indices: [
+            transformedVertexIndex(a, matrix, normalMatrix, transformKey),
+            transformedVertexIndex(b, matrix, normalMatrix, transformKey),
+            transformedVertexIndex(c, matrix, normalMatrix, transformKey),
+          ],
           doubleSided,
           drawEnabled,
           hierarchyPartId: currentAnimationPartId ?? "static",
@@ -270,7 +447,7 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
       message: "The OBJ contains an unbalanced ANIM_begin/ANIM_end block.",
     });
   }
-  if (vertices.length === 0 || triangles.length === 0) {
+  if (sourceVertices.length === 0 || triangles.length === 0) {
     diagnostics.push({
       severity: "warning",
       code: "OBJ8_NO_GEOMETRY",
@@ -284,6 +461,14 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
       code: "OBJ8_VISIBILITY_FILTERED",
       file: path,
       message: `${excludedByVisibility.toLocaleString()} triangle${excludedByVisibility === 1 ? " was" : "s were"} excluded by saved ANIM_show/ANIM_hide configuration values.`,
+    });
+  }
+  if (bakedTransformCount > 0 || attachmentTransformApplied) {
+    diagnostics.push({
+      severity: "info",
+      code: "OBJ8_CONFIGURATION_POSE_BAKED",
+      file: path,
+      message: `${bakedTransformCount.toLocaleString()} deterministic OBJ8 transform${bakedTransformCount === 1 ? " was" : "s were"} baked${attachmentTransformApplied ? ` with ACF attachment ${options.attachment!.index} placement` : ""}.`,
     });
   }
 
@@ -313,6 +498,10 @@ export function parseObj8(path: string, source: string, options: ParseObj8Option
     triangles,
     hierarchyParts,
     excludedByVisibility,
+    bakedTransformCount,
+    skippedLiveTransformCount,
+    attachmentIndex: options.attachment?.index,
+    attachmentTransformApplied,
     diagnostics,
   };
 }

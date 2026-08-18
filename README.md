@@ -10,12 +10,13 @@ A static, local-first GitHub Pages app for inspecting complete X-Plane aircraft 
 - Command-scoped `TRIS` state: culling, blending/alpha test, depth, material colors, shininess, cockpit tagging, and LOD ranges.
 - Day albedo, `_LIT` emissive textures, legacy normal/specular textures, X-Plane 12 `TEXTURE_MAP` textures, and `NORMAL_METALNESS`.
 - Nested two-key and multi-key `ANIM_rotate` / `ANIM_trans`, plus `ANIM_show` / `ANIM_hide`.
+- OpenFlight export baking for saved `opt_config.ini` values, deterministic OBJ8 transforms, and Plane Maker ACF attachment placement.
 - Named, parameterized, and custom light locations.
 - Exterior, cockpit, and complete-aircraft views.
 
 ## Intentional limits
 
-This is a file renderer, not X-Plane itself. It cannot execute aircraft plugins, SASL/FlyWithLua code, custom datarefs, FMOD, particle systems, rain/ice shaders, live Garmin/panel render targets, X-Plane's private `lights.txt` shader implementation, or Plane Maker's legacy built-in fuselage/wing geometry. The dataref panel lets you manually preview authored OBJ8 animation states. Compatibility notes inside the viewer call out files that need simulator-only behavior.
+This is a file renderer, not X-Plane itself. It cannot execute aircraft plugins, SASL/FlyWithLua code, custom datarefs, FMOD, particle systems, rain/ice shaders, live Garmin/panel render targets, X-Plane's private `lights.txt` shader implementation, or Plane Maker's legacy built-in fuselage/wing geometry. The viewer can reproduce saved configuration datarefs from `opt_config.ini`; the FLT converter bakes those values, constant OBJ8 pivots, and ACF attachment transforms while leaving unavailable live simulator motion neutral. The dataref panel lets you manually preview other authored OBJ8 animation states.
 
 ## Run locally
 

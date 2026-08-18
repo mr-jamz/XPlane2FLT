@@ -116,7 +116,8 @@ export function ConversionPanel({ aircraft, visiblePaths }: ConversionPanelProps
       <section className="conversion-summary">
         <div><span>Selected objects</span><strong>{visibleCount}</strong></div>
         <div><span>Coordinates</span><strong>OpenFlight Z-up</strong></div>
-        <p>Visibility toggles determine export selection. Viewer geometry, textures, and highlight colors are never modified.</p>
+        <div><span>Aircraft pose</span><strong>Saved X-Plane configuration</strong></div>
+        <p>Visibility toggles determine export selection. Saved configuration, OBJ8 pivots, and ACF attachment placement are baked into the FLT; unavailable live motions stay neutral.</p>
         <button type="button" className="primary-button conversion-button" disabled={busy || visibleCount === 0} onClick={() => void convert(false)}>
           {busy ? <LoaderCircle className="spinner-icon" size={17} /> : <FileArchive size={17} />}
           {busy ? `${progress?.stage ?? "Building FLT package"}…` : "Convert visible objects"}

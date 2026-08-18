@@ -132,6 +132,30 @@ describe("aircraft archive pipeline", () => {
     expect(inspection.models[0].excludedByVisibility).toBe(1);
   });
 
+  it("applies Plane Maker attachment placement while inspecting export geometry", async () => {
+    const zip = new JSZip();
+    zip.file("Aircraft/demo.acf", [
+      "I", "1200 Version", "ACF",
+      "P _obja/0/_v10_att_file_stl objects/part.obj",
+      "P _obja/0/_v10_att_x_acf_prt_ref 4",
+      "P _obja/0/_v10_att_y_acf_prt_ref 5",
+      "P _obja/0/_v10_att_z_acf_prt_ref 6",
+    ].join("\n"));
+    zip.file("Aircraft/objects/part.obj", [
+      "I", "800", "OBJ",
+      "VT 0 0 0 0 1 0 0 0", "VT 1 0 0 0 1 0 1 0", "VT 0 1 0 0 1 0 0 1",
+      "IDX 0 1 2", "TRIS 0 3",
+    ].join("\n"));
+    const source = await zip.generateAsync({ type: "uint8array" });
+
+    const inspection = await inspectArchive(source, "placed.zip");
+
+    expect(inspection.models).toHaveLength(1);
+    expect(inspection.models[0].vertices[0].position).toEqual([4, 5, 6]);
+    expect(inspection.models[0].attachmentIndex).toBe(0);
+    expect(inspection.diagnostics).toContainEqual(expect.objectContaining({ code: "ACF_CONFIGURATION_POSE_BAKED" }));
+  });
+
   it("warns before exporting geometry without a diffuse texture and supports an explicit bypass", async () => {
     const zip = new JSZip();
     zip.file("Aircraft/demo.acf", "I\n1200 Version\n");
