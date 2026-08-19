@@ -1,6 +1,6 @@
-# X-Plane 12 Model Viewer
+# XPlane2FLT
 
-A static, local-first GitHub Pages app for inspecting complete X-Plane aircraft folders. Drop an aircraft folder or ZIP into the browser to view its OBJ8 objects together, toggle individual parts, inspect textures and render state, and drive dataref animations.
+A GitHub Pages tool for inspecting complete X-Plane aircraft ZIPs and exporting ModelConverterX-compatible OpenFlight packages. Aircraft files are processed privately in the browser and are never uploaded.
 
 ## What this viewer reproduces
 
@@ -17,37 +17,6 @@ A static, local-first GitHub Pages app for inspecting complete X-Plane aircraft 
 ## Intentional limits
 
 This is a file renderer, not X-Plane itself. It cannot execute aircraft plugins, SASL/FlyWithLua code, custom datarefs, FMOD, particle systems, rain/ice shaders, live Garmin/panel render targets, X-Plane's private `lights.txt` shader implementation, or Plane Maker's legacy built-in fuselage/wing geometry. The viewer can reproduce saved configuration datarefs from `opt_config.ini`; the FLT converter bakes those values, constant OBJ8 pivots, and ACF attachment transforms while leaving unavailable live simulator motion neutral. The dataref panel lets you manually preview other authored OBJ8 animation states.
-
-## Run locally
-
-```bash
-npm install
-npm run dev
-```
-
-The app runs entirely in the browser. Aircraft files are never uploaded.
-
-## Test and build
-
-```bash
-npm test
-npm run build
-```
-
-The static output is written to `dist/`.
-
-## Publish as a separate GitHub Page
-
-1. Create a new GitHub repository and add these files.
-2. Push the project to the repository's `main` branch.
-3. In **Settings → Pages → Build and deployment**, select **GitHub Actions**.
-4. The included `Deploy GitHub Pages` workflow builds and publishes the page.
-
-`vite.config.ts` uses a relative asset base, so this works for both `username.github.io` and project pages such as `username.github.io/xplane12-model-viewer/`.
-
-## Browser support
-
-Use a current Chromium, Firefox, or Safari browser with WebGL 2. Folder drag-and-drop is most reliable in Chromium browsers; the **Choose aircraft folder** and **Open ZIP** actions are available as fallbacks.
 
 ## Technical reference
 

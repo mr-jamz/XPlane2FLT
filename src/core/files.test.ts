@@ -62,4 +62,70 @@ describe("defaultVisibleModelPaths", () => {
 
     expect([...defaultVisibleModelPaths(aircraft)]).toEqual(["objects/a.obj", "objects/b.obj"]);
   });
+
+  it("hides only attachments explicitly disabled by matching saved options", () => {
+    const aircraft = {
+      manifest: {
+        acfPath: "uh60m.acf",
+        name: "UH60",
+        warnings: [],
+        attachments: [
+          { index: 0, path: "guns.obj", hideDataref: "uh60m/kill/guns", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+          { index: 1, path: "flircam.obj", hideDataref: "uh60m/kill/flir", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+          { index: 2, path: "gears_fh.obj", hideDataref: "uh60m/kill/fh", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+        ],
+      },
+      models: [
+        { path: "objects/guns.obj" },
+        { path: "objects/flircam.obj" },
+        { path: "objects/gears_fh.obj" },
+      ],
+      files: [],
+      defaultDatarefs: {
+        "uh60m/conf/guns": 0,
+        "uh60m/conf/flir": 1,
+      },
+    } as unknown as LoadedAircraft;
+
+    expect([...defaultVisibleModelPaths(aircraft)]).toEqual([
+      "objects/flircam.obj",
+      "objects/gears_fh.obj",
+    ]);
+  });
+
+  it("applies the supplied MH-60R options without guessing secured plugin states", () => {
+    const aircraft = {
+      manifest: {
+        acfPath: "uh60m.acf",
+        name: "UH60",
+        warnings: [],
+        attachments: [
+          { index: 27, path: "guns.obj", hideDataref: "uh60m/kill/guns", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+          { index: 33, path: "vip_interior.obj", hideDataref: "uh60m/kill/vip", role: "interior", position: [0, 0, 0], rotation: [0, 0, 0] },
+          { index: 45, path: "exterior.obj", hideDataref: "uh60m/kill/exterior", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+          { index: 46, path: "exterior1.obj", hideDataref: "uh60m/kill/exterior1", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+          { index: 49, path: "medevac.obj", hideDataref: "uh60m/kill/medevac", role: "exterior", position: [0, 0, 0], rotation: [0, 0, 0] },
+        ],
+      },
+      models: [
+        { path: "objects/guns.obj" },
+        { path: "objects/vip_interior.obj" },
+        { path: "objects/exterior.obj" },
+        { path: "objects/exterior1.obj" },
+        { path: "objects/medevac.obj" },
+      ],
+      files: [],
+      defaultDatarefs: {
+        "uh60m/conf/guns": 0,
+        "uh60m/conf/vip": 0,
+        "uh60m/conf/exterior": 1,
+        "uh60m/conf/medevac": 0,
+      },
+    } as unknown as LoadedAircraft;
+
+    expect([...defaultVisibleModelPaths(aircraft)]).toEqual([
+      "objects/exterior.obj",
+      "objects/exterior1.obj",
+    ]);
+  });
 });

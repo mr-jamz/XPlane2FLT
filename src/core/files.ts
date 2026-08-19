@@ -113,6 +113,20 @@ function modelMatchesReference(modelPath: string, referencePath: string): boolea
   return model === reference || model.endsWith(`/${reference}`) || reference.endsWith(`/${model}`);
 }
 
+function attachmentEnabledBySavedConfiguration(
+  attachment: AircraftAttachment,
+  defaultDatarefs: Record<string, number>,
+): boolean {
+  const kill = attachment.hideDataref?.match(/^(.+?)\/kill\/(.+)$/i);
+  if (!kill) return true;
+  const configurationDataref = `${kill[1]}/conf/${kill[2]}`.toLowerCase();
+  const saved = Object.entries(defaultDatarefs).find(([dataref]) => dataref.toLowerCase() === configurationDataref)?.[1];
+  // Only an explicit saved zero disables the attachment. Unknown plugin-only
+  // kill states remain visible, and a user can manually re-enable any default-
+  // hidden part in the Parts panel before export.
+  return saved === undefined || saved !== 0;
+}
+
 /**
  * The aircraft package can contain plugin helpers, editor assets, and other
  * OBJ files that Plane Maker never attaches to the aircraft. Keep them in the
@@ -133,7 +147,12 @@ export function defaultVisibleModelPaths(aircraft: LoadedAircraft): Set<string> 
 
   return new Set(aircraft.models
     .filter((model) => {
-      const attached = aircraft.manifest.attachments.some((attachment) => modelMatchesReference(model.path, attachment.path));
+      const matchingAttachments = aircraft.manifest.attachments.filter(
+        (attachment) => modelMatchesReference(model.path, attachment.path),
+      );
+      const attached = matchingAttachments.some(
+        (attachment) => attachmentEnabledBySavedConfiguration(attachment, aircraft.defaultDatarefs),
+      );
       const modelStem = normalizePath(model.path).toLowerCase().replace(/\.obj$/i, "");
       return attached || weaponDefinitions.has(modelStem);
     })
@@ -173,12 +192,9 @@ export async function loadAircraft(inputFiles: SourceFile[]): Promise<LoadedAirc
     ? parseOptionDefaults(await optionSource.file.text(), datarefPrefixes)
     : {};
 
-  // Keep plugin configuration values available to OBJ8 ANIM_show/ANIM_hide
-  // rules, but do not infer attachment kill switches from them. A saved
-  // option such as `seats=0` describes the plugin's last configured loadout;
-  // translating it to `uh60m/kill/seats=1` makes otherwise valid geometry
-  // impossible to inspect in the static viewer. Attachment hide datarefs still
-  // remain available in the Datarefs panel and default to zero (visible).
+  // Saved options also control the initial Parts selection when an attachment's
+  // ACF hide dataref has the exact matching /kill/name form. This reproduces
+  // the configured aircraft load while preserving a manual Parts-panel override.
 
   return {
     name: manifest.name,
